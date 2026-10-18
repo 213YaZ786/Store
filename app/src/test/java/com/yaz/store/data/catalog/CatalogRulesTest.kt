@@ -21,8 +21,9 @@ class CatalogRulesTest {
         name: String = "0.3.6",
         label: String = "Calculator",
         sdk: String = "31",
-        description: String = "{}"
-    ) = """{"package":"$pkg","versionCode":$code,"versionName":"$name","label":"$label","minSdk":$sdk,"description":$description}"""
+        description: String = "{}",
+        apks: String = "[\"Calculator-0.3.6.apk\"]"
+    ) = """{"package":"$pkg","versionCode":$code,"versionName":"$name","label":"$label","minSdk":$sdk,"description":$description,"apks":$apks}"""
 
     // app.json
 
@@ -40,14 +41,14 @@ class CatalogRulesTest {
 
     @Test
     fun `unknown keys are ignored and the description may be absent`() {
-        val app = CatalogRules.parseAppJson("""{"package":"a.b","versionCode":1,"versionName":"1","label":"A","minSdk":21,"extra":{"x":1}}""")
+        val app = CatalogRules.parseAppJson("""{"package":"a.b","versionCode":1,"versionName":"1","label":"A","minSdk":21,"extra":{"x":1},"apks":["A-1.apk"]}""")
         assertNotNull(app)
         assertTrue(app!!.descriptions.isEmpty())
     }
 
     @Test
     fun `a missing field leaves the app out`() {
-        for (field in listOf("package", "versionCode", "versionName", "label", "minSdk")) {
+        for (field in listOf("package", "versionCode", "versionName", "label", "minSdk", "apks")) {
             val text = recorded().replace("\"$field\"", "\"x$field\"")
             assertNull(field, CatalogRules.parseAppJson(text))
         }
@@ -127,53 +128,44 @@ class CatalogRulesTest {
 
     // Assets
 
-    private fun asset(name: String) = ReleaseAsset(name, "https://github.com/213YaZ786/App/releases/download/v1/$name", 10)
+    // The apks list of app.json (JUnit 4, https://github.com/junit-team/junit4/wiki/Assertions).
+    private fun apks(vararg names: String) = names.joinToString(",", "[", "]") { "\"$it\"" }
 
     @Test
-    fun `one release apk with its files is an app`() {
-        val chosen = CatalogRules.chooseAssets(
-            listOf("App-1.0.apk", "App-1.0-debug.apk", "SHA256SUMS.txt", "app.json", "icon.png").map(::asset)
-        )!!
-        assertEquals("App-1.0.apk", chosen.apk.name)
-        assertEquals("SHA256SUMS.txt", chosen.sums.name)
-        assertEquals("app.json", chosen.appJson.name)
-        assertEquals("icon.png", chosen.icon?.name)
+    fun `one to ten apks are listed`() {
+        assertEquals(listOf("A-1.apk"), CatalogRules.parseAppJson(appJson(apks = apks("A-1.apk")))!!.apks)
+        val five = listOf("A-1-arm64-v8a.apk", "A-1-armeabi-v7a.apk", "A-1-universal.apk", "A-1-x86.apk", "A-1-x86_64.apk")
+        assertEquals(five, CatalogRules.parseAppJson(appJson(apks = apks(*five.toTypedArray())))!!.apks)
+        val ten = (1..10).map { "A-$it.apk" }
+        assertEquals(ten, CatalogRules.parseAppJson(appJson(apks = apks(*ten.toTypedArray())))!!.apks)
+        assertNull(CatalogRules.parseAppJson(appJson(apks = apks(*(1..11).map { "A-$it.apk" }.toTypedArray()))))
     }
 
     @Test
-    fun `the icon is optional`() {
-        val chosen = CatalogRules.chooseAssets(listOf("App-1.0.apk", "SHA256SUMS.txt", "app.json").map(::asset))!!
-        assertNull(chosen.icon)
+    fun `no apk listed leaves the app out`() {
+        assertNull(CatalogRules.parseAppJson(appJson(apks = "[]")))
+        assertNull(CatalogRules.parseAppJson(appJson(apks = "null")))
+        assertNull(CatalogRules.parseAppJson(appJson(apks = "\"A-1.apk\"")))
+        assertNull(CatalogRules.parseAppJson(appJson(apks = "[3]")))
+        assertNull(CatalogRules.parseAppJson(appJson(apks = "[null]")))
     }
 
     @Test
-    fun `a debug apk alone is not an app`() {
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0-debug.apk", "SHA256SUMS.txt", "app.json").map(::asset)))
+    fun `an apk name must be a plain release apk`() {
+        for (bad in listOf("A-1-debug.apk", "A-1.APK", "A-1.apk.sig", "A-1", ".apk.txt", "a/b.apk", "../a.apk", "a b.apk", "é.apk", "a%2fb.apk", "a+b.apk", "")) {
+            assertNull(bad, CatalogRules.parseAppJson(appJson(apks = apks(bad))))
+        }
+        // One bad name among good ones leaves the app out.
+        assertNull(CatalogRules.parseAppJson(appJson(apks = apks("A-1.apk", "A-1-debug.apk"))))
+        assertNotNull(CatalogRules.parseAppJson(appJson(apks = apks("a".repeat(196) + ".apk"))))
+        assertNull(CatalogRules.parseAppJson(appJson(apks = apks("a".repeat(197) + ".apk"))))
+        assertTrue(CatalogRules.validApk("My.App_1-2.apk"))
+        assertFalse(CatalogRules.validApk("x-debug.apk"))
     }
 
     @Test
-    fun `two release apks are not guessed between`() {
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk", "App-1.0-arm64.apk", "SHA256SUMS.txt", "app.json").map(::asset)))
-    }
-
-    @Test
-    fun `no apk is not an app`() {
-        assertNull(CatalogRules.chooseAssets(listOf("SHA256SUMS.txt", "app.json", "icon.png").map(::asset)))
-        assertNull(CatalogRules.chooseAssets(emptyList()))
-    }
-
-    @Test
-    fun `a release without its sums or its app json is not an app`() {
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk", "app.json").map(::asset)))
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk", "SHA256SUMS.txt").map(::asset)))
-    }
-
-    @Test
-    fun `names are exact`() {
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.APK", "SHA256SUMS.txt", "app.json").map(::asset)))
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk", "sha256sums.txt", "app.json").map(::asset)))
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk", "SHA256SUMS.txt", "App.json").map(::asset)))
-        assertNull(CatalogRules.chooseAssets(listOf("App-1.0.apk.sig", "SHA256SUMS.txt", "app.json").map(::asset)))
+    fun `a repeated apk name is listed once`() {
+        assertEquals(listOf("A-1.apk"), CatalogRules.parseAppJson(appJson(apks = apks("A-1.apk", "A-1.apk")))!!.apks)
     }
 
     // Locale choice
@@ -230,15 +222,35 @@ class CatalogRulesTest {
         assertEquals(20_000, CatalogRules.plainText("x".repeat(5_000_000), CatalogRules.MAX_NOTES).length)
     }
 
+    // The notes of a tag (JUnit 4, https://github.com/junit-team/junit4/wiki/Assertions; the answer of
+    // https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name).
+    private fun release(tag: String = "v1.0.0", body: String = "Fixes", published: String = "2026-10-18T10:00:00Z") =
+        """{"tag_name":"$tag","published_at":"$published","body":"$body","assets":[{"name":"A-1.apk","size":1234},{"name":"SHA256SUMS.txt","size":0},{"name":"","size":5}]}"""
+
     @Test
-    fun `only our own release page is kept`() {
-        assertEquals("https://github.com/213YaZ786/App/releases/tag/v1", CatalogRules.pageOf("App", "https://github.com/213YaZ786/App/releases/tag/v1"))
-        val fallback = "https://github.com/213YaZ786/App/releases/latest"
-        assertEquals(fallback, CatalogRules.pageOf("App", "https://evil.example/213YaZ786/App/releases/tag/v1"))
-        assertEquals(fallback, CatalogRules.pageOf("App", "https://github.com/someone/App/releases/tag/v1"))
-        assertEquals(fallback, CatalogRules.pageOf("App", "https://github.com/213YaZ786/Other/releases/tag/v1"))
-        assertEquals(fallback, CatalogRules.pageOf("App", ""))
-        assertEquals(fallback, CatalogRules.pageOf("App", "https://github.com/213YaZ786/App/releases/tag/v1 x"))
+    fun `the notes, date and sizes of a tag are read`() {
+        val details = CatalogRules.parseDetails(release(body = "Fixes\\r\\nMore\\u0000"), "v1.0.0")!!
+        assertEquals("Fixes\nMore", details.notes)
+        assertEquals(java.time.Instant.parse("2026-10-18T10:00:00Z"), details.publishedAt)
+        assertEquals(mapOf("A-1.apk" to 1234L), details.sizes)
+    }
+
+    @Test
+    fun `another tag's answer, a bad date or no json is not that release`() {
+        assertNull(CatalogRules.parseDetails(release(tag = "v2"), "v1.0.0"))
+        assertNull(CatalogRules.parseDetails("<html>", "v1.0.0"))
+        assertNull(CatalogRules.parseDetails("[]", "v1.0.0"))
+        assertNull(CatalogRules.parseDetails(release(published = "yesterday"), "v1.0.0")!!.publishedAt)
+        assertEquals("", CatalogRules.parseDetails("""{"tag_name":"v1","body":null}""", "v1")!!.notes)
+    }
+
+    @Test
+    fun `stored notes read back as they were written`() {
+        val details = ReleaseDetails("Fixes\nMore", java.time.Instant.parse("2026-10-18T10:00:00Z"), mapOf("A-1.apk" to 1234L))
+        assertEquals(details, CatalogRules.parseStored(CatalogRules.storeDetails(details)))
+        assertEquals(ReleaseDetails("", null, emptyMap()), CatalogRules.parseStored(CatalogRules.storeDetails(ReleaseDetails("", null, emptyMap()))))
+        assertNull(CatalogRules.parseStored("not json"))
+        assertNull(CatalogRules.parseStored("{}"))
     }
 
     // Repo list

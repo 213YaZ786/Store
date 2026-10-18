@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -33,6 +34,7 @@ import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
+import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.ui.component.EmptyZone
 import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.ScreenBanner
@@ -62,7 +64,7 @@ fun HomeContent(state: HomeState, onRetry: () -> Unit) {
         state.apps.isEmpty() && !state.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingMark(size = 56.dp) }
         state.apps.isEmpty() && error != null ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyZone(title = "Store", message = errorText(error, context), actionLabel = "Retry", onAction = onRetry)
+                EmptyZone(title = "Store", message = errorLine(state, error, context), actionLabel = "Retry", onAction = onRetry)
             }
         state.apps.isEmpty() ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyZone(title = "Store", message = "No app to list yet.") }
@@ -72,14 +74,14 @@ fun HomeContent(state: HomeState, onRetry: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item { ScreenBanner(title = "Store") }
-            if (error != null) item { Text(errorText(error, context), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 4.dp)) }
-            items(state.apps, key = { it.entry.repo }) { AppRow(it) }
+            if (error != null) item { Text(errorLine(state, error, context), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 4.dp)) }
+            items(state.apps, key = { it.entry.repo }) { AppRow(it, state.details[it.entry.repo]) }
         }
     }
 }
 
 @Composable
-private fun AppRow(status: AppStatus) {
+private fun AppRow(status: AppStatus, details: ReleaseDetails?) {
     ZoneSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(status.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -90,6 +92,10 @@ private fun AppRow(status: AppStatus) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (status.handOver) Text("A confirmation will show once.", style = MaterialTheme.typography.bodySmall)
+            details?.notes?.takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -101,7 +107,13 @@ private fun stateText(state: AppState): String = when (state) {
     AppState.HAND_OVER -> "Installed elsewhere, to hand over"
     AppState.FOREIGN -> "Signed by another key, left alone"
     AppState.TOO_NEW -> "Needs a newer Android"
+    AppState.NO_APK -> "No APK for this phone"
 }
+
+// The error, and when the repos came from the list kept at the last opening, a word saying so
+// (a plain string template, https://kotlinlang.org/docs/strings.html#string-templates).
+private fun errorLine(state: HomeState, error: CatalogError, context: Context): String =
+    errorText(error, context) + if (state.listCached) " Repos from the last visit." else ""
 
 private fun errorText(error: CatalogError, context: Context): String = when (error) {
     CatalogError.Offline -> "No connection."

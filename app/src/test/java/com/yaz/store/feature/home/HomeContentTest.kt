@@ -15,6 +15,7 @@ import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.InstalledFacts
+import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.StoreEntry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -32,13 +33,14 @@ class HomeContentTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun status(repo: String, label: String, state: AppState, installed: String?, offered: String) = AppStatus(
+    private fun status(repo: String, label: String, state: AppState, installed: String?, offered: String, handOver: Boolean = false) = AppStatus(
         StoreEntry(
-            repo = repo, packageName = "com.yaz.$repo", label = label, description = "", versionCode = 2, versionName = offered, minSdk = 31,
-            apkName = "$repo.apk", apkUrl = "u", apkSize = 1, sumsUrl = "s", iconUrl = null, notes = "", publishedAt = null, pageUrl = "p"
+            repo = repo, tag = "v$offered", packageName = "com.yaz.$repo", label = label, description = "", versionCode = 2, versionName = offered,
+            minSdk = 31, apkName = "$repo.apk", iconUrl = null
         ),
         state,
-        installed?.let { InstalledFacts(1, it, emptySet(), null, null) }
+        installed?.let { InstalledFacts(1, it, emptySet(), null, null) },
+        handOver
     )
 
     @Test
@@ -73,6 +75,35 @@ class HomeContentTest {
         assertEquals(1, retried)
         state = HomeState(loaded = true, error = CatalogError.RateLimited(null))
         compose.onNodeWithText("GitHub's limit is reached. Try again later.").assertIsDisplayed()
+    }
+
+    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the notes of an update, the hand over note, no APK, the kept list.
+    @Test
+    fun `an update shows its notes and the hand over note, an app with no apk says so`() {
+        val state = HomeState(
+            loaded = true,
+            apps = listOf(
+                status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6", handOver = true),
+                status("dialer", "Dialer", AppState.NO_APK, null, "0.14.20")
+            ),
+            details = mapOf("calculator" to ReleaseDetails("Faster sums\nand a fix", null, emptyMap()))
+        )
+        compose.setContent { HomeContent(state, onRetry = {}) }
+        compose.onNodeWithText("A confirmation will show once.").assertIsDisplayed()
+        compose.onNodeWithText("Faster sums\nand a fix").assertIsDisplayed()
+        compose.onNodeWithText("No APK for this phone").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a limit with the kept list says the repos come from the last visit`() {
+        val state = HomeState(
+            loaded = true,
+            apps = listOf(status("calculator", "Calculator", AppState.UP_TO_DATE, "0.3.6", "0.3.6")),
+            error = CatalogError.RateLimited(null),
+            listCached = true
+        )
+        compose.setContent { HomeContent(state, onRetry = {}) }
+        compose.onNodeWithText("GitHub's limit is reached. Try again later. Repos from the last visit.").assertIsDisplayed()
     }
 
     @Test

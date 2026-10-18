@@ -69,6 +69,9 @@ roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+# For an app built with library modules of its own (Passwords: KeePassDX's database and crypto).
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
 # Never applied to a module: AGP 9 compiles Kotlin itself. Declared only so the
 # root build puts Kotlin Gradle plugin 2.4.0 on the classpath, the version the
 # Compose and serialization plugins below expect, instead of AGP's older default.

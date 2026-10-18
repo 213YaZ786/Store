@@ -7,7 +7,9 @@ package com.yaz.store.feature.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
+import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.Installed
@@ -25,7 +27,11 @@ data class HomeState(
     /** False until a first load has ended. */
     val loaded: Boolean = false,
     val apps: List<AppStatus> = emptyList(),
-    val error: CatalogError? = null
+    val error: CatalogError? = null,
+    /** The repos come from the list kept at the last opening (GitHub's limit reached, or offline). */
+    val listCached: Boolean = false,
+    /** The release notes of the apps with an update, by repo, read once per tag. */
+    val details: Map<String, ReleaseDetails> = emptyMap()
 )
 
 class HomeViewModel(private val app: Application, private val catalog: Catalog) : AndroidViewModel(app) {
@@ -41,7 +47,12 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog) 
         job = viewModelScope.launch {
             val result = catalog.load()
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }
-            mutable.value = HomeState(loading = false, loaded = true, apps = statuses, error = result.error)
+            mutable.value = HomeState(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached)
+            // The notes come from GitHub's API, so only for an app with an update; a tag read once is kept for good.
+            val notes = withContext(Dispatchers.IO) {
+                statuses.filter { it.state == AppState.UPDATE }.mapNotNull { s -> catalog.details(s.entry)?.let { s.entry.repo to it } }.toMap()
+            }
+            mutable.update { it.copy(details = notes) }
         }
     }
 }

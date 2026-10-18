@@ -14,10 +14,9 @@ class InstalledStateTest {
     private val ours = OurKeys.DIGESTS.first()
     private val another = OurKeys.DIGESTS.last()
 
-    private fun entry(code: Long = 10, minSdk: Int = 31) = StoreEntry(
-        repo = "App", packageName = "com.yaz.app", label = "App", description = "", versionCode = code, versionName = "1.0",
-        minSdk = minSdk, apkName = "App-1.0.apk", apkUrl = "u", apkSize = 1, sumsUrl = "s", iconUrl = null, notes = "",
-        publishedAt = null, pageUrl = "p"
+    private fun entry(code: Long = 10, minSdk: Int = 31, apk: String? = "App-1.0.apk") = StoreEntry(
+        repo = "App", tag = "v1.0", packageName = "com.yaz.app", label = "App", description = "", versionCode = code, versionName = "1.0",
+        minSdk = minSdk, apkName = apk, iconUrl = null
     )
 
     private fun facts(
@@ -90,6 +89,31 @@ class InstalledStateTest {
     @Test
     fun `a foreign app is left alone even when the release is too new`() {
         assertEquals(AppState.FOREIGN, state(entry(11, minSdk = 37), facts(10, signers = setOf("00".repeat(32))), sdk = 36))
+    }
+
+    // JUnit 4 (https://github.com/junit-team/junit4/wiki/Assertions): the APK for this phone and the hand over flag.
+    @Test
+    fun `no apk for this phone is shown and never offered`() {
+        assertEquals(AppState.NO_APK, state(entry(apk = null), null))
+        assertEquals(AppState.NO_APK, state(entry(11, apk = null), facts(10)))
+        // Installed and current: an APK that does not fit changes nothing.
+        assertEquals(AppState.UP_TO_DATE, state(entry(10, apk = null), facts(10)))
+        // A newer Android than the phone's comes first.
+        assertEquals(AppState.TOO_NEW, state(entry(minSdk = 37, apk = null), null, sdk = 36))
+        assertEquals(AppState.FOREIGN, state(entry(11, apk = null), facts(10, signers = setOf("00".repeat(32)))))
+    }
+
+    @Test
+    fun `an update keeps its state and flags the hand over when Store does not hold the app`() {
+        val elsewhere = facts(10, installer = "com.android.shell")
+        assertEquals(AppState.UPDATE, state(entry(11), elsewhere))
+        assertTrue(Installed.handOver(elsewhere, store))
+        assertTrue(Installed.handOver(facts(10, installer = null), store))
+        assertFalse(Installed.handOver(facts(10, installer = store), store))
+        assertFalse(Installed.handOver(facts(10, installer = "com.android.shell", owner = store), store))
+        assertFalse(Installed.handOver(null, store))
+        assertFalse(Installed.handOver(facts(10, installer = null, signers = setOf("00".repeat(32))), store))
+        assertFalse(Installed.handOver(facts(10, installer = null, signers = emptySet()), store))
     }
 
     @Test

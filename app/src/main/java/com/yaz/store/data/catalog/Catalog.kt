@@ -1,11 +1,14 @@
 package com.yaz.store.data.catalog
 
 // The list of our apps, read from the 213YaZ786 account at each opening (nothing written in the app). Sources:
-// - komi-store's GitHub client reads a repo's latest release with its assets and body, and chooses the APK among the assets
-//   (https://github.com/komi-store/komi-store, core/data/src/commonMain/kotlin/zed/rainxch/core/data/network/*ApiClient.kt and
-//   feature/*/AndroidInstaller.choosePrimaryAsset); here the choice is stricter: exactly one release APK, app.json and SHA256SUMS.txt.
-// - GitHub's REST endpoints and fields used: list repositories for a user and get the latest release
-//   (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user, https://docs.github.com/en/rest/releases/releases#get-the-latest-release).
+// - GitHub's REST endpoints and fields used: list repositories for a user and get a release by tag name
+//   (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user, https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name).
+//   Without a token the API gives 60 requests an hour and a 304 still counts, so it serves only the repo list and the notes of a tag;
+//   each release is read through "link to the latest release asset"
+//   (https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases), see data/net/ReleaseNet.
+// - komi-store's GitHub client reads a repo's release and its assets (https://github.com/komi-store/komi-store,
+//   core/data/src/commonMain/kotlin/zed/rainxch/core/data/network/*ApiClient.kt); the APK is chosen by architecture as its
+//   AssetArchitectureMatcher does (AbiChoice).
 // - app.json is read with kotlinx.serialization's Json, ignoring unknown keys
 //   (https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/json.md#ignoring-unknown-keys); its fields are the ones the shared CI
 //   writes (Modules shared/base/root/.github/workflows/build.yml.tpl, "Write app.json and the icon").
@@ -17,10 +20,12 @@ package com.yaz.store.data.catalog
 // - At most four releases at a time: kotlinx.coroutines' Semaphore
 //   (https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-semaphore/).
 import android.content.res.Resources
+import android.os.Build
 import com.yaz.store.core.apk.ApkInfoCodec
-import com.yaz.store.data.net.JsonSource
+import com.yaz.store.core.common.writeTextAtomically
 import com.yaz.store.data.net.NetError
 import com.yaz.store.data.net.ReleaseNet
+import com.yaz.store.data.net.ReleaseSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -34,12 +39,15 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.io.File
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
-/** One app of ours, as its latest release describes it. */
+/** One app of ours, as app.json of its latest release describes it. */
 data class StoreEntry(
     val repo: String,
+    /** The tag of the release every file of the entry comes from. */
+    val tag: String,
     val packageName: String,
     val label: String,
     /** In the phone's language when the app has it, else English, else empty. */
@@ -47,15 +55,22 @@ data class StoreEntry(
     val versionCode: Long,
     val versionName: String,
     val minSdk: Int,
-    val apkName: String,
-    val apkUrl: String,
-    val apkSize: Long,
-    val sumsUrl: String,
-    val iconUrl: String?,
+    /** The APK for this phone's ABIs, or null when none of the release's APKs fits: shown, never installed. */
+    val apkName: String?,
+    /** icon.png of the release when it has one. */
+    val iconUrl: String?
+) {
+    val apkUrl: String? get() = apkName?.let { ReleaseNet.downloadUrl(repo, tag, it) }
+    val sumsUrl: String get() = ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt")
+    val pageUrl: String get() = "https://github.com/${ReleaseNet.OWNER}/$repo/releases/tag/$tag"
+}
+
+/** What only GitHub's API tells of a release: its text, its date, the size of each file. Read once per tag. */
+data class ReleaseDetails(
     /** The release's text, plain, at most [CatalogRules.MAX_NOTES] characters. */
     val notes: String,
     val publishedAt: Instant?,
-    val pageUrl: String
+    val sizes: Map<String, Long>
 )
 
 /** Why the list is empty or incomplete. */
@@ -66,8 +81,8 @@ sealed interface CatalogError {
     data object Refused : CatalogError
 }
 
-/** The apps found, and what went wrong on the way, if anything. */
-data class CatalogResult(val entries: List<StoreEntry>, val error: CatalogError?)
+/** The apps found, and what went wrong on the way, if anything. [listCached]: the repos come from the last opening's list. */
+data class CatalogResult(val entries: List<StoreEntry>, val error: CatalogError?, val listCached: Boolean = false)
 
 /** What app.json holds once checked. */
 data class AppJson(
@@ -76,13 +91,9 @@ data class AppJson(
     val versionName: String,
     val label: String,
     val minSdk: Int,
-    val descriptions: Map<String, String>
+    val descriptions: Map<String, String>,
+    val apks: List<String>
 )
-
-/** The assets of a release a store needs. */
-data class ReleaseAsset(val name: String, val url: String, val size: Long)
-
-data class ChosenAssets(val apk: ReleaseAsset, val sums: ReleaseAsset, val appJson: ReleaseAsset, val icon: ReleaseAsset?)
 
 @Serializable
 private data class AppJsonDto(
@@ -91,7 +102,8 @@ private data class AppJsonDto(
     val versionName: String,
     val label: String,
     val minSdk: Int,
-    val description: Map<String, String> = emptyMap()
+    val description: Map<String, String> = emptyMap(),
+    val apks: List<String>
 )
 
 @Serializable
@@ -101,15 +113,18 @@ private data class RepoDto(val name: String, val archived: Boolean = false, val 
 private data class OwnerDto(val login: String = "")
 
 @Serializable
-private data class AssetDto(val name: String = "", @SerialName("browser_download_url") val url: String = "", val size: Long = 0)
+private data class AssetDto(val name: String = "", val size: Long = 0)
 
 @Serializable
 private data class ReleaseDto(
-    @SerialName("html_url") val htmlUrl: String = "",
+    @SerialName("tag_name") val tagName: String = "",
     @SerialName("published_at") val publishedAt: String? = null,
     val body: String? = null,
     val assets: List<AssetDto> = emptyList()
 )
+
+@Serializable
+private data class StoredDetails(val notes: String, val publishedAt: String? = null, val sizes: Map<String, Long> = emptyMap())
 
 /** The rules a release and its app.json must pass; each one a plain function, tested alone. */
 object CatalogRules {
@@ -120,6 +135,8 @@ object CatalogRules {
     /** The CI writes a handful of locales; a hundred is far above any app of ours. */
     const val MAX_LOCALES = 100
     const val MAX_VERSION_NAME = 100
+    /** One APK, or one per ABI: five at most in practice. */
+    const val MAX_APKS = 10
     private const val MAX_LOCALE_TAG = 35
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -128,13 +145,18 @@ object CatalogRules {
     // (FrameworkParsingPackageUtils.validateName with requireSeparator).
     private val PACKAGE = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")
     private val LOCALE = Regex("[A-Za-z0-9_-]{1,$MAX_LOCALE_TAG}")
+    // A release APK's name: GitHub's file name alphabet, 200 at most.
+    private val APK = Regex("[A-Za-z0-9._-]{1,200}")
 
     /** Whether [name] is a package name by Android's rule and at most 255 characters. */
     fun validPackage(name: String): Boolean = name.length <= MAX_PACKAGE && PACKAGE.matches(name)
 
+    /** Whether [name] may be named in `apks`: the file name alphabet, ends in .apk, never in -debug.apk. */
+    fun validApk(name: String): Boolean = APK.matches(name) && name.endsWith(".apk") && !name.endsWith("-debug.apk")
+
     /**
      * app.json checked, or null when anything fails: a missing field, a wrong type, a package that is no package, a text too
-     * long, a versionCode that is not positive. Never guessed from what is left.
+     * long, a versionCode that is not positive, no APK listed. Never guessed from what is left.
      */
     fun parseAppJson(text: String): AppJson? {
         val dto = try {
@@ -153,6 +175,7 @@ object CatalogRules {
         if (dto.label.length > MAX_LABEL || dto.versionName.length > MAX_VERSION_NAME) return null
         if (dto.description.size > MAX_LOCALES) return null
         if (dto.description.any { (tag, text) -> !LOCALE.matches(tag) || text.length > MAX_DESCRIPTION }) return null
+        if (dto.apks.size !in 1..MAX_APKS || !dto.apks.all(::validApk)) return null
         val label = ApkInfoCodec.clean(dto.label, MAX_LABEL)
         val version = ApkInfoCodec.clean(dto.versionName, MAX_VERSION_NAME)
         if (label.isEmpty() || version.isEmpty()) return null
@@ -162,21 +185,9 @@ object CatalogRules {
             versionName = version,
             label = label,
             minSdk = dto.minSdk,
-            descriptions = dto.description.mapValues { ApkInfoCodec.clean(it.value, MAX_DESCRIPTION) }
+            descriptions = dto.description.mapValues { ApkInfoCodec.clean(it.value, MAX_DESCRIPTION) },
+            apks = dto.apks.distinct()
         )
-    }
-
-    /**
-     * The assets of a release, or null when it is not one of our apps: app.json, SHA256SUMS.txt and exactly one `.apk`
-     * whose name does not end with `-debug.apk`. Two release APKs are not guessed between. The icon is optional.
-     * komi-store's AndroidInstaller.choosePrimaryAsset chooses among several APKs; here there is only ever one.
-     */
-    fun chooseAssets(assets: List<ReleaseAsset>): ChosenAssets? {
-        val apks = assets.filter { it.name.endsWith(".apk") && !it.name.endsWith("-debug.apk") }
-        if (apks.size != 1) return null
-        val sums = assets.firstOrNull { it.name == "SHA256SUMS.txt" } ?: return null
-        val info = assets.firstOrNull { it.name == "app.json" } ?: return null
-        return ChosenAssets(apks[0], sums, info, assets.firstOrNull { it.name == "icon.png" })
     }
 
     /**
@@ -218,11 +229,6 @@ object CatalogRules {
         return out.toString().trim()
     }
 
-    // GitHub's release page of a repo only; else the latest-release page (the kit's Updates.latest keeps only its own page).
-    internal fun pageOf(repo: String, htmlUrl: String): String =
-        htmlUrl.takeIf { it.startsWith("https://github.com/${ReleaseNet.OWNER}/$repo/releases/") && ReleaseNet.validRepo(repo) && !it.any { c -> c.isISOControl() || c == ' ' } }
-            ?: "https://github.com/${ReleaseNet.OWNER}/$repo/releases/latest"
-
     internal fun parseRepos(text: String): List<String>? {
         val repos = try {
             json.decodeFromString<List<RepoDto>>(text)
@@ -236,7 +242,8 @@ object CatalogRules {
         }.map { it.name }
     }
 
-    internal fun parseRelease(text: String): ReleaseDtoView? {
+    /** The notes, date and file sizes of the release answered for [tag] (GitHub's get a release by tag name), or null when it is not that release. */
+    internal fun parseDetails(text: String, tag: String): ReleaseDetails? {
         val release = try {
             json.decodeFromString<ReleaseDto>(text)
         } catch (e: SerializationException) {
@@ -244,17 +251,31 @@ object CatalogRules {
         } catch (e: IllegalArgumentException) {
             return null
         }
-        return ReleaseDtoView(
-            release.htmlUrl,
-            release.publishedAt,
-            release.body.orEmpty(),
-            release.assets.map { ReleaseAsset(it.name, it.url, it.size) }
+        if (release.tagName != tag) return null
+        return ReleaseDetails(
+            notes = plainText(release.body.orEmpty(), MAX_NOTES),
+            publishedAt = release.publishedAt?.let(::instant),
+            sizes = release.assets.filter { it.size > 0 && it.name.length in 1..255 }.associate { it.name to it.size }
         )
     }
-}
 
-/** A release as GitHub's JSON gave it, before any check. */
-internal data class ReleaseDtoView(val htmlUrl: String, val publishedAt: String?, val body: String, val assets: List<ReleaseAsset>)
+    /** [details] as the text kept on disk, and back: [parseStored] answers null for a text that is not one. */
+    internal fun storeDetails(details: ReleaseDetails): String =
+        json.encodeToString(StoredDetails(details.notes, details.publishedAt?.toString(), details.sizes))
+
+    internal fun parseStored(text: String): ReleaseDetails? {
+        val stored = try {
+            json.decodeFromString<StoredDetails>(text)
+        } catch (e: SerializationException) {
+            return null
+        } catch (e: IllegalArgumentException) {
+            return null
+        }
+        return ReleaseDetails(plainText(stored.notes, MAX_NOTES), stored.publishedAt?.let(::instant), stored.sizes.filterValues { it > 0 })
+    }
+
+    private fun instant(text: String): Instant? = try { Instant.parse(text) } catch (e: DateTimeParseException) { null }
+}
 
 /** The phone's languages in order, as BCP 47 tags (PackageFacts.device reads them the same way). */
 fun phoneLocaleTags(): List<String> {
@@ -262,9 +283,15 @@ fun phoneLocaleTags(): List<String> {
     return (0 until locales.size()).map { locales[it].toLanguageTag() }
 }
 
+/** The phone's ABIs, best first (https://developer.android.com/reference/android/os/Build#SUPPORTED_ABIS). */
+fun phoneAbis(): List<String> = Build.SUPPORTED_ABIS.toList()
+
 class Catalog(
-    private val source: JsonSource,
-    private val locales: () -> List<String> = ::phoneLocaleTags
+    private val source: ReleaseSource,
+    /** Where the notes of a tag are kept for good (one file per tag); null keeps none. */
+    private val notesDir: File? = null,
+    private val locales: () -> List<String> = ::phoneLocaleTags,
+    private val abis: () -> List<String> = ::phoneAbis
 ) {
 
     private sealed interface Outcome {
@@ -273,59 +300,87 @@ class Catalog(
         data class Failed(val error: NetError) : Outcome
     }
 
-    /** The repos of the account and the apps of their latest releases; errors are carried, never thrown. */
+    /**
+     * The repos of the account (from the cached list, and said so, when GitHub's limit is reached or the phone is offline) and the apps
+     * of their latest releases; errors are carried, never thrown.
+     */
     suspend fun load(): CatalogResult = withContext(Dispatchers.IO) {
-        val repos = try {
-            CatalogRules.parseRepos(source.getJson(ReleaseNet.repoListUrl()))
-                ?: return@withContext CatalogResult(emptyList(), CatalogError.Refused)
+        var listError: NetError? = null
+        val listUrl = ReleaseNet.repoListUrl()
+        val text = try {
+            source.getJson(listUrl)
         } catch (e: NetError) {
-            return@withContext CatalogResult(emptyList(), errorOf(e))
+            // The list as it was last read serves when GitHub's limit is reached or the phone is offline; the releases themselves
+            // are read from github.com, which has no such limit.
+            val kept = if (e.kind == NetError.Kind.RATE_LIMITED || e.kind == NetError.Kind.OFFLINE) {
+                try { source.cached(listUrl) } catch (n: NetError) { null }
+            } else null
+            if (kept == null) return@withContext CatalogResult(emptyList(), errorOf(e))
+            listError = e
+            kept
         }
+        val repos = CatalogRules.parseRepos(text) ?: return@withContext CatalogResult(emptyList(), CatalogError.Refused, listError != null)
         val tags = locales()
+        val phoneAbis = abis()
         val gate = Semaphore(MAX_AT_ONCE)
         val outcomes = coroutineScope {
-            repos.map { repo -> async { gate.withPermit { entryOf(repo, tags) } } }.awaitAll()
+            repos.map { repo -> async { gate.withPermit { entryOf(repo, tags, phoneAbis) } } }.awaitAll()
         }
         val entries = outcomes.filterIsInstance<Outcome.Found>().map { it.entry }
             .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
-        val failures = outcomes.filterIsInstance<Outcome.Failed>().map { it.error }
+        val failures = listOfNotNull(listError) + outcomes.filterIsInstance<Outcome.Failed>().map { it.error }
         // The most useful reason first: a limit says when to come back, a lost network says to retry.
         val error = failures.firstOrNull { it.kind == NetError.Kind.RATE_LIMITED }
             ?: failures.firstOrNull { it.kind == NetError.Kind.OFFLINE }
             ?: failures.firstOrNull()
-        CatalogResult(entries, error?.let(::errorOf))
+        CatalogResult(entries, error?.let(::errorOf), listCached = listError != null)
     }
 
-    // One repo: its latest release, kept only when it is one of our apps.
-    private fun entryOf(repo: String, tags: List<String>): Outcome {
+    /**
+     * The notes, date and sizes of the release [entry] comes from: kept on disk once read, for good (a tag's notes do not change),
+     * else asked of GitHub's API once. Null when they cannot be read now. Blocking: off the main thread.
+     */
+    fun details(entry: StoreEntry): ReleaseDetails? {
+        val file = notesDir?.let { File(it, ApkInfoCodec.sha256Hex("${entry.repo}/${entry.tag}".toByteArray()) + ".json") }
+        if (file != null && file.isFile && file.length() <= ReleaseNet.MAX_JSON) {
+            runCatching { file.readText() }.getOrNull()?.let(CatalogRules::parseStored)?.let { return it }
+        }
+        val text = try {
+            source.getJson(ReleaseNet.tagsUrl(entry.repo, entry.tag))
+        } catch (e: NetError) {
+            return null
+        }
+        val details = CatalogRules.parseDetails(text, entry.tag) ?: return null
+        if (file != null) runCatching {
+            file.parentFile?.mkdirs()
+            file.writeTextAtomically(CatalogRules.storeDetails(details))
+        }
+        return details
+    }
+
+    // One repo: the tag of its latest release from the first hop of latest/download/app.json, then app.json of that tag (a 404 is no app.json,
+    // so no app of ours), the APK for this phone among the ones it lists, and icon.png when the release has one.
+    private fun entryOf(repo: String, tags: List<String>, phoneAbis: List<String>): Outcome {
         try {
-            val release = CatalogRules.parseRelease(source.getJson(ReleaseNet.latestUrl(repo))) ?: return Outcome.Skipped
-            val assets = release.assets.filter { ReleaseNet.isReleaseFileOf(repo, it.url) }
-            val chosen = CatalogRules.chooseAssets(assets) ?: return Outcome.Skipped
-            val app = CatalogRules.parseAppJson(source.getJson(chosen.appJson.url)) ?: return Outcome.Skipped
+            val tag = source.latestTag(repo)
+            val app = CatalogRules.parseAppJson(source.getJson(ReleaseNet.downloadUrl(repo, tag, "app.json"))) ?: return Outcome.Skipped
+            val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png")
             return Outcome.Found(
                 StoreEntry(
                     repo = repo,
+                    tag = tag,
                     packageName = app.packageName,
                     label = app.label,
                     description = CatalogRules.pickDescription(app.descriptions, tags),
                     versionCode = app.versionCode,
                     versionName = app.versionName,
                     minSdk = app.minSdk,
-                    apkName = chosen.apk.name,
-                    apkUrl = chosen.apk.url,
-                    apkSize = chosen.apk.size,
-                    sumsUrl = chosen.sums.url,
-                    iconUrl = chosen.icon?.url,
-                    notes = CatalogRules.plainText(release.body, CatalogRules.MAX_NOTES),
-                    publishedAt = release.publishedAt?.let {
-                        try { Instant.parse(it) } catch (e: DateTimeParseException) { null }
-                    },
-                    pageUrl = CatalogRules.pageOf(repo, release.htmlUrl)
+                    apkName = AbiChoice.choose(app.apks, phoneAbis),
+                    iconUrl = icon.takeIf { source.exists(it) }
                 )
             )
         } catch (e: NetError) {
-            // A repo with no release, or a release without the file, is simply not an app of ours.
+            // A repo with no release, or a release without app.json, is simply not an app of ours.
             return if (e.kind == NetError.Kind.NOT_FOUND) Outcome.Skipped else Outcome.Failed(e)
         }
     }

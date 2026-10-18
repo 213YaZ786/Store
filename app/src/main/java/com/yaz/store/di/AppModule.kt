@@ -10,6 +10,7 @@ import com.yaz.store.data.net.ReleaseNet
 import com.yaz.store.data.settings.SettingsStore
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import java.io.File
 
 /** Single composition root. */
 val appModule = module {
@@ -17,5 +18,6 @@ val appModule = module {
     single { SessionRegistry(PrefsSessionStore(androidContext())) }
     // The catalog of our apps, read from GitHub through the one door of the network (data/net, data/catalog).
     single { ReleaseNet(androidContext().cacheDir) }
-    single { Catalog(get<ReleaseNet>()) }
+    // The notes of a tag are kept in their own folder of the cache, one file per tag.
+    single { Catalog(get<ReleaseNet>(), File(androidContext().cacheDir, "notes")) }
 }

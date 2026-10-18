@@ -28,7 +28,9 @@ enum class AppState {
     /** Installed but signed by none of our keys: Store never touches it. */
     FOREIGN,
     /** The release needs a newer Android than this phone's. */
-    TOO_NEW
+    TOO_NEW,
+    /** None of the release's APKs fits this phone's ABIs: shown, never installed. */
+    NO_APK
 }
 
 /** What the phone says of an installed app. [signers] are SHA-256 digests of its current certificates, lower case hex. */
@@ -40,8 +42,12 @@ data class InstalledFacts(
     val updateOwner: String?
 )
 
-/** An entry with its state and what is installed, for the screens. */
-data class AppStatus(val entry: StoreEntry, val state: AppState, val installed: InstalledFacts?)
+/**
+ * An entry with its state and what is installed, for the screens. [handOver]: installed, signed by ours, and Store is neither the
+ * installer of record nor the update owner (https://developer.android.com/reference/android/content/pm/InstallSourceInfo), so
+ * Android asks once before Store's update goes in, whatever the state says.
+ */
+data class AppStatus(val entry: StoreEntry, val state: AppState, val installed: InstalledFacts?, val handOver: Boolean = false)
 
 object Installed {
 
@@ -51,17 +57,30 @@ object Installed {
      * touched); a higher versionCode (an update, or too new for this phone); at last whether Store holds the app.
      */
     fun stateOf(entry: StoreEntry, facts: InstalledFacts?, sdk: Int, store: String): AppState {
-        if (facts == null) return if (entry.minSdk > sdk) AppState.TOO_NEW else AppState.NOT_INSTALLED
+        if (facts == null) return when {
+            entry.minSdk > sdk -> AppState.TOO_NEW
+            entry.apkName == null -> AppState.NO_APK
+            else -> AppState.NOT_INSTALLED
+        }
         if (!OurKeys.allOurs(facts.signers)) return AppState.FOREIGN
-        if (entry.versionCode > facts.versionCode) return if (entry.minSdk > sdk) AppState.TOO_NEW else AppState.UPDATE
-        val held = facts.installer == store || facts.updateOwner == store
-        return if (held) AppState.UP_TO_DATE else AppState.HAND_OVER
+        if (entry.versionCode > facts.versionCode) return when {
+            entry.minSdk > sdk -> AppState.TOO_NEW
+            entry.apkName == null -> AppState.NO_APK
+            else -> AppState.UPDATE
+        }
+        return if (held(facts, store)) AppState.UP_TO_DATE else AppState.HAND_OVER
     }
+
+    // The installer of record and the update owner, as InstallSourceInfo gives them (https://developer.android.com/reference/android/content/pm/InstallSourceInfo).
+    private fun held(facts: InstalledFacts, store: String): Boolean = facts.installer == store || facts.updateOwner == store
+
+    /** True when the app is installed, signed by ours, and Store does not hold it (see [AppStatus.handOver]). */
+    fun handOver(facts: InstalledFacts?, store: String): Boolean = facts != null && OurKeys.allOurs(facts.signers) && !held(facts, store)
 
     /** Every entry with its state, read from the phone now. */
     fun statuses(context: Context, entries: List<StoreEntry>): List<AppStatus> = entries.map {
         val facts = read(context, it.packageName)
-        AppStatus(it, stateOf(it, facts, Build.VERSION.SDK_INT, context.packageName), facts)
+        AppStatus(it, stateOf(it, facts, Build.VERSION.SDK_INT, context.packageName), facts, handOver(facts, context.packageName))
     }
 
     /** The facts of [packageName], or null when it is not installed (or not visible to Store). */
