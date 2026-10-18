@@ -1,0 +1,78 @@
+# Version catalogue.
+# 2.0.0 moved the build to AGP 9 (built-in Kotlin, new DSL) and compileSdk 37.
+# Library versions are kept up to date by Dependabot, see .github/dependabot.yml.
+[versions]
+# AGP 9.4 refuses any Gradle below 9.6.0. The wrapper names 9.8.0, and the
+# CI workflow reads its Gradle version from the wrapper, so the two cannot
+# drift apart.
+agp = "9.4.1"
+kotlin = "2.4.20"
+coreKtx = "1.19.1"
+lifecycle = "2.9.4"
+activityCompose = "1.11.0"
+# Compose that compiles against API 37. Moved by Dependabot.
+composeBom = "2026.09.00"
+navigation = "2.10.2"
+koin = "4.2.2"
+ktor = "3.6.0"
+coil = "3.6.3"
+media3 = "1.11.1"
+# Glide's GIF decoder (pure Java), run only inside the isolated DecoderService.
+gifdecoder = "5.0.9"
+# Material 3 Expressive's shapes (EmptyZone's Sunny) until material3 ships MaterialShapes stable.
+graphicsShapes = "1.1.0"
+# The browser engine library, used by the apps that need one.
+webkit = "1.17.0"
+junit = "4.13.2"
+# Screens tested on the JVM, as Now in Android does (core/screenshot-testing): Robolectric
+# draws them, Roborazzi compares the pictures; no emulator, nothing for anyone to look at.
+robolectric = "4.17"
+roborazzi = "1.76.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+# ProcessLifecycleOwner: the update kit installs when the user leaves the app.
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
+androidx-navigation-compose ={ group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.11.0" }
+koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
+koin-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
+coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
+androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version = "2.12.0" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+# HLS playlists, for the networks that serve their videos that way.
+media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+glide-gifdecoder = { group = "com.github.bumptech.glide", name = "gifdecoder", version.ref = "gifdecoder" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+# Never applied to a module: AGP 9 compiles Kotlin itself. Declared only so the
+# root build puts Kotlin Gradle plugin 2.4.0 on the classpath, the version the
+# Compose and serialization plugins below expect, instead of AGP's older default.
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }

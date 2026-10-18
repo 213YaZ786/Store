@@ -1,0 +1,7 @@
+<resources>
+    <!-- The launcher icon follows the wallpaper, as Dialer's, SMS's and Contacts' do:
+         the palest tone of the accent by day, the plate in the accent. -->
+    <color name="ic_launcher_background">@android:color/system_accent1_50</color>
+    <color name="ic_launcher_disc">@android:color/system_accent1_500</color>
+    <color name="ic_launcher_glyph">@android:color/system_accent1_600</color>
+</resources>

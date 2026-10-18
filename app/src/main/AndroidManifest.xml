@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ported from Files (YAZ/Files at HEAD, app/src/main/AndroidManifest.xml), itself from Calculator (https://github.com/213YaZ786/Calculator, app/src/main/AndroidManifest.xml). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The list of releases on GitHub and their files. Nothing else goes out. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Installing the APKs of our apps. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- An update goes in without a question when Store is the installer of record or the update owner. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- Asks to become the update owner of an app on its first install (PackageInstaller.SessionParams.setRequestUpdateOwnership). -->
+    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
+    <!-- Uninstall an app when the user asks. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- The note while an update downloads and after one is installed. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keep a download going, with its progress, when the app is left. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- The type of that service: a transfer of data (Android 14 and later). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Package visibility (https://developer.android.com/training/package-visibility) without QUERY_ALL_PACKAGES:
+         every app with a launcher entry, which holds ours. Android also shows an installer the apps it installed. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".StoreApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Store"
+        android:enableOnBackInvokedCallback="false"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:memtagMode="sync">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Reads every APK from outside, in a process of its own with no permission, no files and no network.
+             Pattern of the safemedia kit's DecoderService. -->
+        <service
+            android:name=".core.apk.ApkInspectorService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":inspector" />
+
+        <!-- Decodes pictures in a process of its own with no permission, no files and no network; as the header of the
+             safemedia kit's DecoderService says (the same declaration as SMS and Contacts). The icons of the releases. -->
+        <service
+            android:name=".core.security.DecoderService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":decoder" />
+
+        <!-- Android's answer to an install session of ours. Named by an explicit PendingIntent, never exported. -->
+        <receiver
+            android:name=".core.install.InstallResultReceiver"
+            android:exported="false" />
+    </application>
+</manifest>
