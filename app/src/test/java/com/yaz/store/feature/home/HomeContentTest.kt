@@ -17,6 +17,8 @@ import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.InstalledFacts
 import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.StoreEntry
+import com.yaz.store.data.install.InstallJob
+import com.yaz.store.data.install.JobStep
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -92,6 +94,70 @@ class HomeContentTest {
         compose.onNodeWithText("A confirmation will show once.").assertIsDisplayed()
         compose.onNodeWithText("Faster sums\nand a fix").assertIsDisplayed()
         compose.onNodeWithText("No APK for this phone").assertIsDisplayed()
+    }
+
+    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the buttons of each state and the queue's step on a row.
+    @Test
+    fun `each state offers its button, update all counts the updates, a queued entry shows its step and a cancel`() {
+        val apps = listOf(
+            status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6"),
+            status("dialer", "Dialer", AppState.NOT_INSTALLED, null, "0.14.20"),
+            status("mtga", "MTGA", AppState.FOREIGN, "2.15.15", "2.15.15"),
+            status("sms", "SMS", AppState.HAND_OVER, "0.15.6", "0.15.6", handOver = true)
+        )
+        val installed = mutableListOf<String>()
+        var all = 0
+        var cancelled = ""
+        var state by mutableStateOf(HomeState(loaded = true, apps = apps))
+        compose.setContent {
+            HomeContent(state, onRetry = {}, onInstall = { installed += it.entry.repo }, onUpdateAll = { all++ }, onCancel = { cancelled = it })
+        }
+        compose.onNodeWithText("Update all (1)").performClick()
+        compose.onNodeWithText("Update").performClick()
+        compose.onNodeWithText("Install").performClick()
+        compose.onNodeWithText("Hand over").performClick()
+        assertEquals(1, all)
+        assertEquals(listOf("calculator", "dialer", "sms"), installed)
+
+        val running = InstallJob(apps[0].entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
+        state = HomeState(loaded = true, apps = apps, jobs = listOf(running))
+        compose.onNodeWithText("Downloading 42%").assertIsDisplayed()
+        compose.onNodeWithText("Cancel all").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("com.yaz.calculator", cancelled)
+
+        state = HomeState(loaded = true, apps = apps, jobs = listOf(running.copy(step = JobStep.FAILED, why = "No connection.")))
+        compose.onNodeWithText("Failed: No connection.").assertIsDisplayed()
+        // A failed entry offers its button again.
+        compose.onNodeWithText("Update").assertIsDisplayed()
+    }
+
+    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): a queue entry with no app in the list.
+    @Test
+    fun `an entry whose app is not in the list keeps its own row with a cancel, even when the list is empty`() {
+        val entry = status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6").entry
+        var cancelled = ""
+        val job = InstallJob(entry, handOver = false, serial = 1, step = JobStep.CHECKING)
+        compose.setContent { HomeContent(HomeState(loaded = true, jobs = listOf(job)), onRetry = {}, onCancel = { cancelled = it }) }
+        compose.onNodeWithText("Calculator").assertIsDisplayed()
+        compose.onNodeWithText("Checking").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("com.yaz.calculator", cancelled)
+    }
+
+    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the words of each step.
+    @Test
+    fun `every step of the queue has its words`() {
+        val entry = status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6").entry
+        fun words(step: JobStep, progress: Float = 0f, why: String? = null) = jobText(InstallJob(entry, false, 1, step, progress, why))
+        assertEquals("Waiting", words(JobStep.QUEUED))
+        assertEquals("Downloading 0%", words(JobStep.DOWNLOADING))
+        assertEquals("Downloading 100%", words(JobStep.DOWNLOADING, 1.7f))
+        assertEquals("Checking", words(JobStep.CHECKING))
+        assertEquals("Installing", words(JobStep.INSTALLING))
+        assertEquals("Waiting for your confirmation", words(JobStep.CONFIRM))
+        assertEquals("Installed", words(JobStep.DONE))
+        assertEquals("Failed: The file is another version than the release says.", words(JobStep.FAILED, why = "The file is another version than the release says."))
     }
 
     @Test

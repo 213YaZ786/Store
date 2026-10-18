@@ -1,0 +1,24 @@
+# A first install of Calculator's real release through the queue, seeded by run-install.sh: downloaded, checked, then Android's own
+# confirmation (a first install is always asked), then Installed. Google Play emulators add Play Protect's scan question: the flow
+# installs without scanning (the file is not sent to Google).
+# Commands from https://docs.maestro.dev/reference/commands-available (runFlow with when: visible).
+appId: com.yaz.store.debug
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Install this app?"
+    timeout: 120000
+- tapOn: "Install"
+- extendedWaitUntil:
+    visible: ".*(Installed|More details).*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "More details"
+    commands:
+      - tapOn: "More details"
+      - tapOn: "Install without scanning"
+- extendedWaitUntil:
+    visible: "Installed"
+    timeout: 60000

@@ -1,0 +1,10 @@
+# An entry that fails a check, seeded by run-install.sh: Store shows why in plain words and installs nothing. MSG is the reason expected.
+# Commands from https://docs.maestro.dev/reference/commands-available.
+appId: com.yaz.store.debug
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Failed: ${MSG}"
+    timeout: 90000
+- assertNotVisible: "Installed"

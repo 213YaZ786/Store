@@ -143,7 +143,9 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
     }
 
     // The kit's download, with its 200 MiB cap.
-    fun download(url: String, into: File, onProgress: (Float) -> Unit) {
+    // [beforeRead] runs before each read of the body: a caller that is cancelled throws from it (kotlinx.coroutines' ensureActive),
+    // so a download stops at the next buffer and the connection is closed by the finally below.
+    fun download(url: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit = {}) {
         val start = parse(url)
         try {
             val conn = open(start, null) ?: throw NetError(NetError.Kind.REFUSED, message = "304 on a download")
@@ -156,6 +158,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                         var read = 0L
                         var shown = -1
                         while (true) {
+                            beforeRead()
                             val n = input.read(buffer)
                             if (n < 0) break
                             read += n

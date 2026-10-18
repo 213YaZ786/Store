@@ -235,7 +235,7 @@ class ReleaseNetTest {
             { net.latestTag("a/b") },
             { net.exists("https://api.github.com/users/213YaZ786/repos?per_page=100&type=owner") },
             { net.exists("https://github.com/someone/App/releases/download/v1/icon.png") },
-            { net.download("https://evil.example/a.apk", java.io.File.createTempFile("store-test", ".apk")) {} }
+            { net.download("https://evil.example/a.apk", java.io.File.createTempFile("store-test", ".apk"), onProgress = {}) }
         )) {
             val error = assertThrows(NetError::class.java) { call() }
             assertEquals(NetError.Kind.REFUSED, error.kind)

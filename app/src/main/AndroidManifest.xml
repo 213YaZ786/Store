@@ -75,5 +75,16 @@
         <receiver
             android:name=".core.install.InstallResultReceiver"
             android:exported="false" />
+
+        <!-- Runs only while an install or update is queued, with its notification. Files' FileJobService, from Material Files'. -->
+        <service
+            android:name=".data.install.InstallService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- The Cancel button of that notification. Named by an explicit PendingIntent, never exported. -->
+        <receiver
+            android:name=".data.install.InstallCancelReceiver"
+            android:exported="false" />
     </application>
 </manifest>

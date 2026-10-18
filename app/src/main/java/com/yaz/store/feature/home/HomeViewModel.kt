@@ -13,6 +13,9 @@ import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.install.InstallJob
+import com.yaz.store.data.install.InstallQueue
+import com.yaz.store.data.install.JobStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,14 +34,51 @@ data class HomeState(
     /** The repos come from the list kept at the last opening (GitHub's limit reached, or offline). */
     val listCached: Boolean = false,
     /** The release notes of the apps with an update, by repo, read once per tag. */
-    val details: Map<String, ReleaseDetails> = emptyMap()
+    val details: Map<String, ReleaseDetails> = emptyMap(),
+    /** The install queue: what each entry that was queued is doing now. */
+    val jobs: List<InstallJob> = emptyList()
 )
 
-class HomeViewModel(private val app: Application, private val catalog: Catalog) : AndroidViewModel(app) {
+// The actions below hand the person's taps to the queue and the queue's list comes back in the state: Android's ViewModel guide
+// (https://developer.android.com/topic/libraries/architecture/viewmodel) and Files' ArchiveViewModel (YAZ/Files at HEAD,
+// feature/archive/ArchiveViewModel.kt), which hands its work to a runner and collects its StateFlow.
+class HomeViewModel(private val app: Application, private val catalog: Catalog, private val queue: InstallQueue) : AndroidViewModel(app) {
 
     private val mutable = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = mutable.asStateFlow()
     private var job: Job? = null
+
+    init {
+        // The queue's entries ride along in the state; when one ends well the phone is read again, so its row shows the new version.
+        viewModelScope.launch {
+            var done = emptySet<Long>()
+            queue.jobs.collect { jobs ->
+                mutable.update { it.copy(jobs = jobs) }
+                val now = jobs.filter { it.step == JobStep.DONE }.map { it.serial }.toSet()
+                if (now.any { it !in done }) refreshInstalled()
+                done = now
+            }
+        }
+    }
+
+    /** Installs or updates [status]'s app through the queue; false when it is queued already. */
+    fun install(status: AppStatus): Boolean = queue.enqueue(status.entry, status.handOver)
+
+    /** "Update all": every app whose state is UPDATE. */
+    fun updateAll(): Int = queue.enqueueUpdates(mutable.value.apps)
+
+    fun cancel(packageName: String) = queue.cancel(packageName)
+
+    fun cancelAll() = queue.cancelAll()
+
+    // The phone's side again, without GitHub: the installed versions and who holds each app.
+    private fun refreshInstalled() {
+        viewModelScope.launch {
+            val entries = mutable.value.apps.map { it.entry }
+            val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, entries) }
+            mutable.update { it.copy(apps = statuses) }
+        }
+    }
 
     /** Reads the account and the phone again; ignored while a load is running. */
     fun load() {
@@ -47,7 +87,7 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog) 
         job = viewModelScope.launch {
             val result = catalog.load()
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }
-            mutable.value = HomeState(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached)
+            mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached, details = emptyMap()) }
             // The notes come from GitHub's API, so only for an app with an update; a tag read once is kept for good.
             val notes = withContext(Dispatchers.IO) {
                 statuses.filter { it.state == AppState.UPDATE }.mapNotNull { s -> catalog.details(s.entry)?.let { s.entry.repo to it } }.toMap()

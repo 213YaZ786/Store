@@ -1,0 +1,10 @@
+# The same release again once Store holds the app: Store is the installer of record and the update owner, so Android asks nothing.
+# Seeded by run-install.sh. Commands from https://docs.maestro.dev/reference/commands-available.
+appId: com.yaz.store.debug
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Installed"
+    timeout: 120000
+- assertNotVisible: "Install this app?"

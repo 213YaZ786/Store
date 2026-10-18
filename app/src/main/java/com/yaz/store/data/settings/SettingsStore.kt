@@ -22,7 +22,9 @@ data class Settings(
     /** Zones and floating controls in liquid glass, over a soft light in the wallpaper's colours. */
     val glass: Boolean = true,
     /** Multiplier on every text style, one of the steps in ui.theme.TEXT_SCALES. */
-    val textScale: Float = 1f
+    val textScale: Float = 1f,
+    /** The notification permission was asked once, at the first Install or Update tap; Android's own limit then governs. */
+    val notificationsAsked: Boolean = false
 )
 
 /** Small preference file, plain JSON written atomically, like the other apps. */

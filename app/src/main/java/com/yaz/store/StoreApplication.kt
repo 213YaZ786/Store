@@ -29,6 +29,8 @@ class StoreApplication : Application() {
         val registry = koin.get<SessionRegistry>()
         Thread {
             ApkBundle.sweep(cacheDir)
+            // A download a killed process left half way (the queue deletes its own after each try).
+            java.io.File(cacheDir, com.yaz.store.di.DOWNLOADS).deleteRecursively()
             registry.abandonOrphans(packageManager.packageInstaller)
         }.start()
     }

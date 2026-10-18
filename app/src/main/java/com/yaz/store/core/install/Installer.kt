@@ -31,9 +31,56 @@ import kotlinx.coroutines.withContext
 // session result: https://developer.android.com/reference/android/content/pm/PackageInstaller.Session#commit(android.content.IntentSender)
 // The confirmation screen is started only when it resolves to a system app, against intent redirection:
 // https://developer.android.com/privacy-and-security/risks/intent-redirection
+// The choices of a store's session (SessionChoices): GrapheneOS' App Store, InstallTask.makeSessionParams,
+// setRequireUserAction(USER_ACTION_NOT_REQUIRED), setPackageSource(PACKAGE_SOURCE_STORE) from API 33 and
+// setRequestUpdateOwnership(true) from API 34 (there, only when the package is not installed yet):
+// https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/InstallTask.kt
+// and the platform's documentation of each call:
+// https://developer.android.com/reference/android/content/pm/PackageInstaller.SessionParams
 
-/** The APKs to install: the base and the chosen splits, written to the session in this order. */
-class InstallRequest(val packageName: String, val files: List<File>)
+/** Where the files come from, which Android records as the package source (API 33 and later). */
+enum class InstallOrigin { LOCAL_FILE, STORE }
+
+/**
+ * The APKs to install: the base and the chosen splits, written to the session in this order.
+ * [silent]: ask Android for no question (it keeps asking unless the installer may skip it, see SessionChoices).
+ * [claimOwnership]: ask to become the update owner, which counts on a first install only.
+ */
+class InstallRequest(
+    val packageName: String,
+    val files: List<File>,
+    val source: InstallOrigin = InstallOrigin.LOCAL_FILE,
+    val silent: Boolean = false,
+    val claimOwnership: Boolean = false
+)
+
+/** What a request asks of the session's parameters at one Android level; a plain value so a test can read it. */
+data class SessionChoices(val packageSource: Int?, val noUserAction: Boolean, val requestOwnership: Boolean) {
+
+    /** Sets these choices on [params], each call only where the platform has it. */
+    fun applyTo(params: PackageInstaller.SessionParams) {
+        if (packageSource != null) params.setPackageSource(packageSource)
+        if (noUserAction) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        if (requestOwnership) params.setRequestUpdateOwnership(true)
+    }
+
+    companion object {
+        /**
+         * The choices for [request] on a phone at [sdk]; [installed]: the package is on the phone already. The package source is
+         * recorded from API 33, no user action from API 31, the update ownership from API 34 and for a first install only.
+         */
+        fun of(request: InstallRequest, sdk: Int, installed: Boolean): SessionChoices = SessionChoices(
+            packageSource = if (sdk >= Build.VERSION_CODES.TIRAMISU) {
+                when (request.source) {
+                    InstallOrigin.LOCAL_FILE -> PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
+                    InstallOrigin.STORE -> PackageInstaller.PACKAGE_SOURCE_STORE
+                }
+            } else null,
+            noUserAction = request.silent && sdk >= Build.VERSION_CODES.S,
+            requestOwnership = request.claimOwnership && !installed && sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        )
+    }
+}
 
 sealed interface InstallState {
     data object Idle : InstallState
@@ -72,9 +119,7 @@ class Installer(private val context: Context, private val registry: SessionRegis
                     setAppPackageName(request.packageName)
                     setSize(total)
                     setInstallReason(PackageManager.INSTALL_REASON_USER)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        setPackageSource(PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE)
-                    }
+                    SessionChoices.of(request, Build.VERSION.SDK_INT, isInstalled(request.packageName)).applyTo(this)
                 }
                 val id = try {
                     installer.createSession(params)
@@ -131,6 +176,15 @@ class Installer(private val context: Context, private val registry: SessionRegis
                 if (!committed) abandonActive()
             }
         }
+    }
+
+    // Whether the package is on the phone and visible to the app: PackageManager.getPackageInfo throws NameNotFoundException otherwise
+    // (https://developer.android.com/reference/android/content/pm/PackageManager#getPackageInfo(java.lang.String,%20int)).
+    private fun isInstalled(packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0)
+        true
+    } catch (e: PackageManager.NameNotFoundException) {
+        false
     }
 
     /** The person cancelled: the session, if any, is abandoned. */
