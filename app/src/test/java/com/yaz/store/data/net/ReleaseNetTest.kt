@@ -225,6 +225,76 @@ class ReleaseNetTest {
         }
     }
 
+    // Source: UpdatesTest of the update kit (https://github.com/213YaZ786/Calculator, app/src/test/java/com/yaz/calculator/core/update/UpdatesTest.kt):
+    // each shape asserted allowed or refused, with the lookalikes of its host, owner and path.
+    private fun icon(repo: String = "Calculator", owner: String = "213YaZ786", ref: String = "HEAD", path: String = "fastlane/metadata/android/en-US/images/icon.png") =
+        "https://github.com/$owner/$repo/raw/$ref/$path"
+
+    // Source: UpdatesTest of the update kit (https://github.com/213YaZ786/Calculator, app/src/test/java/com/yaz/calculator/core/update/UpdatesTest.kt)
+    @Test
+    fun `the repo icon address is allowed in exactly one shape`() {
+        assertEquals(icon(), ReleaseNet.repoIconUrl("Calculator"))
+        assertTrue(ReleaseNet.startAllowed(icon()))
+        assertTrue(ReleaseNet.startAllowed(icon("Yid")))
+        assertFalse(ReleaseNet.startAllowed(icon(owner = "someone")))
+        assertFalse(ReleaseNet.startAllowed(icon(owner = "213yaz786")))
+        assertFalse(ReleaseNet.startAllowed(icon(repo = "..")))
+        assertFalse(ReleaseNet.startAllowed(icon(repo = "a%2fb")))
+        assertFalse(ReleaseNet.startAllowed(icon(ref = "main")))
+        assertFalse(ReleaseNet.startAllowed(icon(ref = "b93fcc0740e6767393e3544382ea38d126ac76de")))
+        assertFalse(ReleaseNet.startAllowed(icon(path = "fastlane/metadata/android/fr-FR/images/icon.png")))
+        assertFalse(ReleaseNet.startAllowed(icon(path = "fastlane/metadata/android/en-US/images/featureGraphic.png")))
+        assertFalse(ReleaseNet.startAllowed(icon(path = "README.md")))
+        assertFalse(ReleaseNet.startAllowed(icon(path = "fastlane/metadata/android/en-US/images/icon.png/x")))
+        assertFalse(ReleaseNet.startAllowed(icon(path = "fastlane/../app/build.gradle.kts")))
+        assertFalse(ReleaseNet.startAllowed(icon().replace("https", "http")))
+        assertFalse(ReleaseNet.startAllowed(icon() + "?x=1"))
+        assertFalse(ReleaseNet.startAllowed(icon() + "#x"))
+        assertFalse(ReleaseNet.startAllowed(icon().replace("github.com", "github.com.evil.example")))
+        assertFalse(ReleaseNet.startAllowed(icon().replace("github.com", "raw.githubusercontent.com")))
+        assertFalse(ReleaseNet.startAllowed("https://raw.githubusercontent.com/213YaZ786/Calculator/HEAD/fastlane/metadata/android/en-US/images/icon.png"))
+    }
+
+    // Source: UpdatesTest of the update kit (https://github.com/213YaZ786/Calculator, app/src/test/java/com/yaz/calculator/core/update/UpdatesTest.kt)
+    @Test
+    fun `the raw host is reached only from a repo icon, for the same owner and repo`() {
+        val start = URL(icon("Calculator"))
+        val path = "fastlane/metadata/android/en-US/images/icon.png"
+        val sha = "b93fcc0740e6767393e3544382ea38d126ac76de"
+        assertEquals("raw.githubusercontent.com", ReleaseNet.hop(start, URL("https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path")).host)
+        assertEquals("raw.githubusercontent.com", ReleaseNet.hop(start, URL("https://raw.githubusercontent.com/213YaZ786/Calculator/refs/heads/main/$path")).host)
+        for (bad in listOf(
+            "https://raw.githubusercontent.com/213YaZ786/SMS/$sha/$path",
+            "https://raw.githubusercontent.com/someone/Calculator/$sha/$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/README.md",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/fastlane/metadata/android/fr-FR/images/icon.png",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/../SMS/$sha/$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator//$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path?x=1",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path#x",
+            "http://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path",
+            "https://raw.githubusercontent.com:8443/213YaZ786/Calculator/$sha/$path",
+            "https://user@raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path",
+            "https://raw.githubusercontent.com.evil.example/213YaZ786/Calculator/$sha/$path",
+            "https://gist.githubusercontent.com/213YaZ786/Calculator/$sha/$path"
+        )) {
+            val error = assertThrows(bad, NetError::class.java) { ReleaseNet.hop(start, URL(bad)) }
+            assertEquals(NetError.Kind.REFUSED, error.kind)
+        }
+        // from any other start, the raw host is refused, even for a good path
+        val good = URL("https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path")
+        for (other in listOf(
+            file("Calculator", "v1", "icon.png"), latest("Calculator"), icon("SMS"),
+            "https://api.github.com/users/213YaZ786/repos?per_page=100&type=owner"
+        )) {
+            val error = assertThrows(other, NetError::class.java) { ReleaseNet.hop(URL(other), good) }
+            assertEquals(NetError.Kind.REFUSED, error.kind)
+        }
+        // other hosts still follow the old rule
+        assertEquals("objects.githubusercontent.com", ReleaseNet.hop(start, URL("https://objects.githubusercontent.com/x")).host)
+    }
+
     @Test
     fun `an address that is not allowed is never opened, for each door`() {
         val net = ReleaseNet(java.io.File(System.getProperty("java.io.tmpdir"), "store-net-test"))

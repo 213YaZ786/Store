@@ -14,6 +14,11 @@ package com.yaz.store.data.net
 // reached without the API through "link to the latest release asset"
 // (https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases): a 302 from
 // releases/latest/download/<asset> to releases/download/<tag>/<asset>, which carries no rate limit.
+// The repo's own icon (fastlane/metadata/android/en-US/images/icon.png, the layout F-Droid and IzzyOnDroid read from the source tree,
+// https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots) is read through GitHub's raw file link
+// github.com/<owner>/<repo>/raw/<ref>/<path>, a 302 to raw.githubusercontent.com
+// (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files): the one shape allowed,
+// and raw.githubusercontent.com only as the hop of that shape, for the same owner and repo.
 import com.yaz.store.core.apk.ApkInfoCodec
 import com.yaz.store.core.common.writeTextAtomically
 import java.io.ByteArrayOutputStream
@@ -174,6 +179,31 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         }
     }
 
+    /** The bytes of a changed file and the ETag of its answer (null when it sent none). */
+    class Fresh(val bytes: ByteArray, val etag: String?)
+
+    // Source: getBytes above and GitHub's conditional requests (If-None-Match with the ETag of the last answer, 304 = unchanged,
+    // https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate).
+    // The repo icon: null on a 304, else the new bytes and their ETag; a 404 is NetError NOT_FOUND.
+    fun getIfChanged(url: String, max: Long, etag: String?): Fresh? {
+        val start = parse(url)
+        val sent = etag?.takeIf(::plainHeader)
+        try {
+            val conn = open(start, null, null, sent) ?: return null
+            try {
+                if (conn.contentLengthLong > max) throw NetError(NetError.Kind.REFUSED, message = "too large")
+                val tag = conn.getHeaderField("ETag")?.takeIf(::plainHeader)
+                return Fresh(conn.inputStream.use { readCapped(it, max) }, tag)
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: NetError) {
+            throw e
+        } catch (e: IOException) {
+            throw NetError(NetError.Kind.OFFLINE, message = "offline")
+        }
+    }
+
     // A release file read by byte ranges (RFC 9110 section 14, https://www.rfc-editor.org/rfc/rfc9110#section-14): the same open as every other
     // read (allow-listed start, every redirect checked), the Range header on each hop, 206 only, Content-Range checked against what was asked and
     // against the length first seen (checkRange). The address where the redirects ended is kept for the next reads (GitHub's release asset host
@@ -285,11 +315,14 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
      */
     // [range] ("bytes=a-b", RFC 9110 section 14) is sent to every hop; a ranged read is answered 206 and only 206 (a 200 means the server
     // ignored the range and would send the whole file: refused), a plain read 200 and only 200.
-    private fun open(start: URL, etag: String?, range: String? = null): HttpURLConnection? {
+    // [rawEtag] is the one exception to "the tag goes only to the first address": a repo icon's ETag was sent by raw.githubusercontent.com, so
+    // it goes back to that host (If-None-Match, RFC 9110 section 13.1.2, https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2) once hop() let it in.
+    private fun open(start: URL, etag: String?, range: String? = null, rawEtag: String? = null): HttpURLConnection? {
         var url = start
         var hops = 0
         while (true) {
-            val conn = request(url, "GET", if (hops == 0) etag else null)
+            val sent = if (hops == 0) etag else if (rawEtag != null && url.host.lowercase() == RAW_HOST) rawEtag else null
+            val conn = request(url, "GET", sent)
             if (range != null) conn.setRequestProperty("Range", range)
             when (val code = conn.responseCode) {
                 200, 206 -> {
@@ -307,7 +340,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                     if (hops++ >= MAX_REDIRECTS || location.isNullOrBlank()) {
                         throw NetError(NetError.Kind.REFUSED, message = "redirect refused")
                     }
-                    url = checked(try { URL(url, location) } catch (e: MalformedURLException) {
+                    url = hop(start, try { URL(url, location) } catch (e: MalformedURLException) {
                         throw NetError(NetError.Kind.REFUSED, message = "bad redirect")
                     })
                 }
@@ -354,6 +387,56 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
             if (from != start || to != end || to >= total) throw NetError(NetError.Kind.REFUSED, message = "Content-Range mismatch")
             if (knownTotal >= 0 && total != knownTotal) throw NetError(NetError.Kind.REFUSED, message = "length changed")
             return total
+        }
+
+        private const val RAW_HOST = "raw.githubusercontent.com"
+        private const val REPO_ICON_PATH = "fastlane/metadata/android/en-US/images/icon.png"
+        // The ref raw.githubusercontent.com names after a "HEAD" link: a commit or "refs/heads/<branch>".
+        private val RAW_REF = Regex("[A-Za-z0-9._/+-]{1,200}")
+
+        // Source: GitHub's raw file link github.com/<owner>/<repo>/raw/<ref>/<path>
+        // (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files) with the F-Droid layout path
+        // (https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots). The address of the icon in the source tree of [repo], on its default branch.
+        fun repoIconUrl(repo: String): String = "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$REPO_ICON_PATH"
+
+        // Source: the same allow-list shape as releaseFile and latestApp above (the update kit's fromRepo), after GitHub's raw link
+        // (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files).
+        // "", owner, repo, raw, HEAD, fastlane, metadata, android, en-US, images, icon.png
+        private fun repoIcon(parts: List<String>): String? {
+            if (parts.size != 11 || parts[0].isNotEmpty() || parts[1] != OWNER || parts[3] != "raw" || parts[4] != "HEAD") return null
+            if (parts.subList(5, 11).joinToString("/") != REPO_ICON_PATH) return null
+            return parts[2].takeIf(::validRepo)
+        }
+
+        // Source: the check of tagOfLocation above (the update kit's first-hop rule) applied to GitHub's raw redirect, which answers 302 to
+        // raw.githubusercontent.com/<owner>/<repo>/<commit or refs/heads/branch>/<path> (docs: https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files).
+        /**
+         * Where the redirect of a repo icon address leads: exactly raw.githubusercontent.com/<owner>/<same repo>/<ref>/<the icon path>,
+         * HTTPS, default port, no query, no fragment, no dots segment in the ref. [start] is the address the read began with.
+         */
+        internal fun rawIconHop(start: URL, hop: URL): Boolean {
+            if (!hostOk(hop) || hop.host.lowercase() != RAW_HOST || hop.query != null || hop.ref != null) return false
+            val repo = repoIcon(start.path.split('/')) ?: return false
+            val prefix = "/$OWNER/$repo/"
+            val suffix = "/$REPO_ICON_PATH"
+            val path = hop.path
+            if (!path.startsWith(prefix) || !path.endsWith(suffix) || path.length <= prefix.length + suffix.length - 1) return false
+            val ref = path.substring(prefix.length, path.length - suffix.length)
+            return RAW_REF.matches(ref) && ref.split('/').none { it.isEmpty() || it == "." || it == ".." }
+        }
+
+        // Source: the kit's checked above (HTTPS to GitHub's hosts, every hop read by hand,
+        // https://developer.android.com/reference/java/net/HttpURLConnection#setInstanceFollowRedirects(boolean)), widened to the raw host
+        // for a repo icon's own file only.
+        /** The next address of a redirect from [start]: GitHub's hosts, and the raw host only for a repo icon's own file. */
+        internal fun hop(start: URL, next: URL): URL {
+            if (next.host.lowercase() == RAW_HOST) {
+                if (!(start.host.lowercase() == PAGES_HOST && start.protocol == "https" && rawIconHop(start, next))) {
+                    throw NetError(NetError.Kind.REFUSED, message = "refused ${next.host}")
+                }
+                return next
+            }
+            return checked(next)
         }
 
         /** The query of the one repo list we ask for. */
@@ -416,7 +499,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                     else -> u.query == null && parts.size == 7 && parts[0].isEmpty() && parts[1] == "repos" && parts[2] == OWNER &&
                         validRepo(parts[3]) && parts[4] == "releases" && parts[5] == "tags" && validTag(parts[6])
                 }
-                PAGES_HOST -> u.query == null && (releaseFile(parts) != null || latestApp(parts) != null)
+                PAGES_HOST -> u.query == null && (releaseFile(parts) != null || latestApp(parts) != null || repoIcon(parts) != null)
                 else -> false
             }
         }
