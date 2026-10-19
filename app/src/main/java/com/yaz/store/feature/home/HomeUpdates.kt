@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.res.pluralStringResource
+import com.yaz.store.ui.component.FloatingPane
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -129,11 +133,35 @@ internal fun Notes(key: String, notes: String) {
 }
 
 /**
- * "Up to date", shown when no app waits. Tapped seven times in a row it plays the easter egg (feature/eggs); [onEgg] gets the middle of
- * the row in the window, where the wave starts. The count starts again after two seconds without a tap, as Android's version does.
+ * The state of the apps beside the title, in the floating top pane: "N updates" when some wait, "Up to date" when none does. The App
+ * Store on iOS puts its account beside the large title, and Google Play's "Manage apps & device" says "Updates available" at the head of
+ * its list; GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/UpdatesScreen.kt)
+ * counts the updates too. Here the state sits in a small pill of glass on the title's line (FloatingTop's center slot); the count is
+ * a plural string (https://developer.android.com/develop/ui/compose/resources#string-resources, pluralStringResource).
+ * "Up to date" tapped seven times in a row plays the easter egg (feature/eggs); [onEgg] gets the middle of the pill in the window, where
+ * the wave starts. The count starts again after two seconds without a tap, as Android's version does.
  */
 @Composable
-internal fun UpToDateRow(onEgg: (Offset) -> Unit, seen: MutableSet<String>, modifier: Modifier = Modifier) {
+internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Unit, seen: MutableSet<String>) {
+    if (updates > 0) {
+        FloatingPane(shape = CircleShape, modifier = Modifier.entrancePop(seen, "status")) {
+            Text(
+                pluralStringResource(R.plurals.notice_updates, updates, updates),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+            )
+        }
+    } else if (allCurrent) {
+        UpToDatePill(onEgg, seen)
+    }
+}
+
+// Source: StatusPill's, above.
+@Composable
+private fun UpToDatePill(onEgg: (Offset) -> Unit, seen: MutableSet<String>) {
     var taps by remember { mutableStateOf(0) }
     var middle by remember { mutableStateOf(Offset.Zero) }
     androidx.compose.runtime.LaunchedEffect(taps) {
@@ -143,9 +171,9 @@ internal fun UpToDateRow(onEgg: (Offset) -> Unit, seen: MutableSet<String>, modi
         }
     }
     val label = stringResource(R.string.up_to_date)
-    ZoneSurface(
-        shape = RoundedCornerShape(24.dp),
-        modifier = modifier.fillMaxWidth()
+    FloatingPane(
+        shape = CircleShape,
+        modifier = Modifier
             .entrancePop(seen, "uptodate")
             .onGloballyPositioned { middle = it.positionInWindow() + Offset(it.size.width / 2f, it.size.height / 2f) }
             .sinkClickable(label, depth = 0.97f) {
@@ -156,13 +184,9 @@ internal fun UpToDateRow(onEgg: (Offset) -> Unit, seen: MutableSet<String>, modi
                 }
             }
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(AppIcons.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 10.dp))
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(AppIcons.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp))
         }
     }
 }

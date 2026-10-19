@@ -98,6 +98,9 @@ class HomeContentTest {
             )
         }
         compose.onNodeWithText("Updates").assertIsDisplayed()
+        // The count beside the title replaces "Up to date".
+        compose.onNodeWithText("1 update").assertIsDisplayed()
+        compose.onNodeWithText("Up to date").assertDoesNotExist()
         compose.onNodeWithText("Update all · 4.2 MB").performClick()
         assertEquals(1, all)
         compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").assertIsDisplayed()

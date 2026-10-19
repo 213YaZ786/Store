@@ -76,6 +76,7 @@ import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.ScreenBanner
+import com.yaz.store.ui.component.TitlePill
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.navigationBarBottom
 import com.yaz.store.ui.component.rememberRefreshHaptics
@@ -171,7 +172,14 @@ fun HomeContent(
         bottom = navigationBarBottom(),
         top = {
             FloatingTop(
-                stringResource(R.string.home_title),
+                title = null,
+                // The title and the state of the apps on one line (the status pill, HomeUpdates.kt).
+                center = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TitlePill(stringResource(R.string.home_title))
+                        StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen)
+                    }
+                },
                 trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) }
             )
         },
@@ -207,7 +215,7 @@ fun HomeContent(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
                         val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
-                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen) { egg = it }
+                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen)
                     }
                 }
             }
@@ -225,8 +233,7 @@ private fun HomeList(
     onUpdateAll: () -> Unit,
     onCancelAll: () -> Unit,
     onRetry: () -> Unit,
-    seen: MutableSet<String>,
-    onEgg: (Offset) -> Unit
+    seen: MutableSet<String>
 ) {
     val context = LocalContext.current
     val error = state.error
@@ -258,8 +265,6 @@ private fun HomeList(
             item("updates") {
                 UpdatesZone(updates, state.jobs, state.details, actions, onUpdateAll, onCancelAll, seen, side)
             }
-        } else if (HomeModel.allCurrent(state.apps)) {
-            item("uptodate") { UpToDateRow(onEgg, seen, side) }
         }
         item("lists") {
             val both = installed.isNotEmpty() && available.isNotEmpty()
