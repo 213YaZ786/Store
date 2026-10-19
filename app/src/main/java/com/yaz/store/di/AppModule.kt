@@ -11,6 +11,7 @@ import com.yaz.store.BuildConfig
 import android.content.pm.PackageManager
 import android.os.Build
 import com.yaz.store.data.catalog.Catalog
+import com.yaz.store.data.catalog.CatalogOverlay
 import com.yaz.store.data.catalog.Installed
 import com.yaz.store.data.door.Door
 import com.yaz.store.data.door.DoorGuard
@@ -49,11 +50,12 @@ val appModule = module {
             get<ReleaseNet>(), File(app.cacheDir, "notes"),
             seeded = if (BuildConfig.DEBUG) ({ Seeded.read(File(app.filesDir, "debug-seed.json"), phoneLocaleTags(), phoneAbis()) }) else ({ emptyList() }),
             // A release with no app.json is read from its APK by ranges, in the isolated SparseInspectorService (data/sparse).
+            overlay = if (BuildConfig.DEBUG) debugOverlay(app) else null,
             probe = SparseProbe(get<ReleaseNet>()::ranges, SparseApk(SparseInspector(app), File(app.cacheDir, "sparse-work")), File(app.cacheDir, "sparse"))
         )
     }
     // The release icons of apps not installed, one file per tag in the cache.
-    single { IconStore(get<ReleaseNet>(), File(androidContext().cacheDir, "icons")) }
+    single { IconStore(get<ReleaseNet>(), File(androidContext().cacheDir, "icons"), if (BuildConfig.DEBUG) debugOverlay(androidContext()) else null) }
     // The install kit's installer and isolated inspector, and the queue that downloads, checks and installs one entry at a time
     // (data/install). Its work runs in the application's own scope, off the main thread; the foreground service starts when an entry is queued.
     single { Installer(androidContext(), get()) }
@@ -95,6 +97,11 @@ val appModule = module {
         )
     }
 }
+
+// The debug build's overlay (src/debug DebugMeta) found by name (Class.forName, https://developer.android.com/reference/java/lang/Class#forName(java.lang.String)); null when it is not there.
+private fun debugOverlay(app: android.content.Context): CatalogOverlay? = runCatching {
+    Class.forName("com.yaz.store.DebugMeta").getConstructor(File::class.java).newInstance(app.filesDir) as CatalogOverlay
+}.getOrNull()
 
 /** Where the queue keeps a download until it is checked; the start of the app empties it. */
 const val DOWNLOADS = "downloads"

@@ -9,10 +9,16 @@ import com.yaz.store.data.net.NetError
 import com.yaz.store.data.net.ReleaseNet
 import java.io.File
 
-class IconStore(private val net: ReleaseNet, private val dir: File) {
+class IconStore(
+    private val net: ReleaseNet,
+    private val dir: File,
+    /** Debug builds only (AppModule): pictures a test pushes, see [CatalogOverlay]. Nothing in the release build. */
+    private val overlay: CatalogOverlay? = null
+) {
 
     /** The bytes of icon.png of [entry]'s release, or null when it has none or cannot be read now. Blocking: off the main thread. */
     fun bytes(entry: StoreEntry): ByteArray? {
+        overlay?.icon(entry)?.let { return it }
         val url = entry.iconUrl ?: return null
         val file = File(dir, ApkInfoCodec.sha256Hex("${entry.repo}/${entry.tag}".toByteArray()) + ".png")
         if (file.isFile && file.length() in 1..MAX_ICON) runCatching { file.readBytes() }.getOrNull()?.let { return it }

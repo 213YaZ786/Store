@@ -351,6 +351,8 @@ class Catalog(
     private val abis: () -> List<String> = ::phoneAbis,
     /** Debug builds only (AppModule): entries a test puts beside the live list, see [Seeded]. Empty in the release build. */
     private val seeded: () -> List<StoreEntry> = { emptyList() },
+    /** Debug builds only (AppModule): changes what the entries show, see [CatalogOverlay]. Nothing in the release build. */
+    private val overlay: CatalogOverlay? = null,
     /** Reads a release APK with no app.json by ranges (data/sparse); null lists such a repo by its name. */
     private val probe: ApkProbe? = null
 ) {
@@ -370,11 +372,18 @@ class Catalog(
     suspend fun load(): CatalogResult {
         val live = loadLive()
         val extra = withContext(Dispatchers.IO) { seeded() }
-        if (extra.isEmpty()) return live
+        if (extra.isEmpty()) return overlaid(live)
         // A seeded entry replaces the live one of the same package; the error of the live read stays, so a test sees both.
         val merged = (live.entries.filter { l -> extra.none { it.packageName == l.packageName } } + extra)
             .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
-        return live.copy(entries = merged)
+        return overlaid(live.copy(entries = merged))
+    }
+
+    // The debug overlay applied last, over the live and the seeded entries; off the main thread as load does it
+    // (kotlinx.coroutines withContext, https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html).
+    private suspend fun overlaid(result: CatalogResult): CatalogResult {
+        val over = overlay ?: return result
+        return result.copy(entries = withContext(Dispatchers.IO) { over.apply(result.entries) })
     }
 
     private suspend fun loadLive(): CatalogResult = withContext(Dispatchers.IO) {
