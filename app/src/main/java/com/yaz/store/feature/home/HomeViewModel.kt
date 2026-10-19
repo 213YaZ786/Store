@@ -12,7 +12,9 @@ import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
+import com.yaz.store.BuildConfig
 import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.InstallQueue
@@ -37,8 +39,17 @@ data class HomeState(
     /** The date and sizes of a release by [detailsKey] (repo and tag), read once per tag. */
     val details: Map<String, ReleaseDetails> = emptyMap(),
     /** The install queue: what each entry that was queued is doing now. */
-    val jobs: List<InstallJob> = emptyList()
+    val jobs: List<InstallJob> = emptyList(),
+    /** Store's own newer release, offered by a dialog at launch (OwnUpdate); null when there is none. */
+    val own: OwnOffer? = null,
+    /** "Later" was chosen: the dialog stays hidden until Store is launched again. */
+    val ownLater: Boolean = false
 )
+
+// The state of the dialog is the update kit's UpdatePrompt (our code, GPL-3.0, https://github.com/213YaZ786/Calculator, app/src/main/java/com/yaz/calculator/ui/component/UpdatePrompt.kt):
+// the newer release it found, and "Later" (release = null) that hides it until the next launch.
+/** Store's own release that is newer than the installed one, and the version name it replaces. */
+data class OwnOffer(val entry: StoreEntry, val from: String)
 
 // The actions below hand the person's taps to the queue and the queue's list comes back in the state: Android's ViewModel guide
 // (https://developer.android.com/topic/libraries/architecture/viewmodel) and Files' ArchiveViewModel (YAZ/Files at HEAD,
@@ -74,6 +85,14 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog, 
 
     fun cancel(packageName: String) = queue.cancel(packageName)
 
+    // The dialog's Update goes through the same queue as any app, Store being its own installer
+    // (GrapheneOS' App Store, MIT, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/InstallTask.kt).
+    /** "Update" of the dialog: Store's own release is queued like any app's. */
+    fun updateSelf(): Boolean = mutable.value.own?.let { queue.enqueue(it.entry) } ?: false
+
+    /** "Later": the dialog stays hidden until Store is launched again (UpdatePrompt's release = null, see OwnOffer). */
+    fun later() = mutable.update { it.copy(ownLater = true) }
+
     fun cancelAll() = queue.cancelAll()
 
     // The phone's side again, without GitHub: the installed versions and who holds each app.
@@ -81,8 +100,17 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog, 
         viewModelScope.launch {
             val entries = mutable.value.apps.map { it.entry }
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, entries) }
-            mutable.update { it.copy(apps = statuses) }
+            val offer = withContext(Dispatchers.IO) { offerOf(mutable.value.own?.entry) }
+            mutable.update { it.copy(apps = statuses, own = offer) }
         }
+    }
+
+    // Store's own release offered when the installed Store is older and signed by ours (OwnUpdate.pending, after Installed.stateOf, GrapheneOS'
+    // App Store, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/InstallTask.kt findPackage).
+    private fun offerOf(own: StoreEntry?): OwnOffer? {
+        val facts = Installed.read(app, app.packageName)
+        val entry = OwnUpdate.pending(own, facts, android.os.Build.VERSION.SDK_INT, app.packageName, BuildConfig.DEBUG) ?: return null
+        return OwnOffer(entry, facts?.versionName.orEmpty())
     }
 
     /** Reads the account and the phone again; ignored while a load is running. */
@@ -92,10 +120,12 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog, 
         job = viewModelScope.launch {
             val result = catalog.load()
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }
-            mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached) }
-            // The sizes come from GitHub's API only (app.json has none), so only for an app with an update; a tag read once is kept for good.
+            val offer = withContext(Dispatchers.IO) { offerOf(result.own) }
+            mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached, own = offer) }
+            // The sizes come from GitHub's API only (app.json has none), so only for an app with an update (and Store's own); a tag read once is kept for good.
             val sizes = withContext(Dispatchers.IO) {
-                statuses.filter { it.state == AppState.UPDATE }.mapNotNull { s -> catalog.details(s.entry)?.let { s.entry.detailsKey to it } }.toMap()
+                (statuses.filter { it.state == AppState.UPDATE }.map { it.entry } + listOfNotNull(offer?.entry))
+                    .mapNotNull { e -> catalog.details(e)?.let { e.detailsKey to it } }.toMap()
             }
             mutable.update { it.copy(details = it.details + sizes) }
         }

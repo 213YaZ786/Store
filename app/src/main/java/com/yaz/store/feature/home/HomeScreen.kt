@@ -62,6 +62,7 @@ import com.yaz.store.R
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.IconStore
+import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.SettingsStore
@@ -103,6 +104,8 @@ fun HomeScreen(model: HomeViewModel, onSettings: () -> Unit, onPage: (String) ->
             onOpen = { openApp(context, it) },
             onPage = { onPage(it.entry.packageName) },
             onSettings = onSettings,
+            onOwnUpdate = { if (model.updateSelf()) afterTap() },
+            onOwnLater = model::later,
             seen = model.popped
         )
     }
@@ -156,15 +159,21 @@ fun HomeContent(
     onOpen: (AppStatus) -> Unit = {},
     onPage: (AppStatus) -> Unit = {},
     onSettings: () -> Unit = {},
+    onOwnUpdate: () -> Unit = {},
+    onOwnLater: () -> Unit = {},
     seen: MutableSet<String> = remember { mutableSetOf() }
 ) {
     val context = LocalContext.current
+    // Store's own package is in no list: its queue entry, if any, belongs to the update dialog alone (OwnUpdate).
+    val ownJob = state.jobs.firstOrNull { OwnUpdate.isOwn(it.entry.packageName) }
+    val listState = if (ownJob == null) state else state.copy(jobs = state.jobs - ownJob)
+    OwnUpdateHost(state, ownJob, onOwnUpdate, onOwnLater, onCancel)
     var egg by remember { mutableStateOf<Offset?>(null) }
     val askedRefresh = rememberRefreshHaptics(state.loading, state.error != null)
     val pull = rememberPullToRefreshState()
     val actions = remember(onInstall, onOpen, onPage, onCancel) { CardActions(onInstall, onOpen, onPage, onCancel) }
     // An entry of the queue whose app is not in the list read from GitHub (the list changed under it) keeps its row until it ends.
-    val orphans = state.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
+    val orphans = listState.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
     val empty = state.apps.isEmpty() && orphans.isEmpty()
     val error = state.error
 
@@ -215,7 +224,7 @@ fun HomeContent(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
                         val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
-                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen)
+                        HomeList(listState, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen)
                     }
                 }
             }

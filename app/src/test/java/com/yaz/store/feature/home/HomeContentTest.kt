@@ -7,7 +7,9 @@ package com.yaz.store.feature.home
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import com.yaz.store.data.catalog.ReleaseDetails
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -214,6 +216,51 @@ class HomeContentTest {
         assertEquals("16", HomeModel.androidName(36))
         assertEquals("API 99", HomeModel.androidName(99))
         assertEquals(AppState.UPDATE, calculator.state)
+    }
+
+    // Store's own update dialog, drawn from fixed state as the tests above draw the screen (Compose's testing guide,
+    // https://developer.android.com/develop/ui/compose/testing).
+    private val storeEntry = Fixtures.status("Store", "Store", AppState.UPDATE, "0.1.0", "0.1.1", packageName = "com.yaz.store").entry
+    private val offer = OwnOffer(storeEntry, "0.1.0")
+
+    // https://developer.android.com/develop/ui/compose/testing
+    @Test
+    fun `the dialog shows only when a newer Store release is offered`() {
+        compose.setContent { HomeContent(HomeState(loaded = true, apps = listOf(dialer)), onRetry = {}) }
+        compose.onNodeWithText("Update available").assertDoesNotExist()
+        compose.onNodeWithText("Later").assertDoesNotExist()
+    }
+
+    // https://developer.android.com/develop/ui/compose/testing
+    @Test
+    fun `the dialog says the versions and the size, Update queues Store and Later hides it`() {
+        var updated = 0
+        var later = 0
+        val details = mapOf("Store/v0.1.1" to ReleaseDetails(null, mapOf("Store.apk" to 4_200_000L)))
+        var state by mutableStateOf(HomeState(loaded = true, apps = listOf(dialer), own = offer, details = details))
+        compose.setContent { HomeContent(state, onRetry = {}, onOwnUpdate = { updated++ }, onOwnLater = { later++; state = state.copy(ownLater = true) }) }
+        compose.onNodeWithText("Update available").assertIsDisplayed()
+        compose.onNodeWithText("Store 0.1.0 → 0.1.1 · 4.2 MB").assertIsDisplayed()
+        compose.onNodeWithText("Update").performClick()
+        assertEquals(1, updated)
+        compose.onNodeWithText("Later").performClick()
+        assertEquals(1, later)
+        compose.onNodeWithText("Update available").assertDoesNotExist()
+    }
+
+    // https://developer.android.com/develop/ui/compose/testing
+    @Test
+    fun `while Store downloads the dialog shows the step and Cancel, and no list shows Store`() {
+        var cancelled = ""
+        val running = InstallJob(storeEntry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
+        val state = HomeState(loaded = true, apps = listOf(dialer), own = offer, ownLater = true, jobs = listOf(running))
+        compose.setContent { HomeContent(state, onRetry = {}, onCancel = { cancelled = it }) }
+        compose.onNodeWithText("Update available").assertIsDisplayed()
+        compose.onNodeWithText("Downloading 42%").assertIsDisplayed()
+        // No orphan row, no Updates zone, no Cancel all for Store's own entry: only the dialog's Cancel.
+        compose.onAllNodesWithText("Cancel all").assertCountEquals(0)
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals("com.yaz.store", cancelled)
     }
 
     // The nodes carrying [text], counted: an updates row and a list row can both carry the same word.

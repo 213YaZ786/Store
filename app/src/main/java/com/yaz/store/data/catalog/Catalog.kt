@@ -91,7 +91,13 @@ sealed interface CatalogError {
 data class RepoInfo(val name: String, val description: String)
 
 /** The apps found, and what went wrong on the way, if anything. [listCached]: the repos come from the last opening's list. */
-data class CatalogResult(val entries: List<StoreEntry>, val error: CatalogError?, val listCached: Boolean = false)
+data class CatalogResult(
+    val entries: List<StoreEntry>,
+    val error: CatalogError?,
+    val listCached: Boolean = false,
+    /** Store's own newest release, kept out of [entries] (OwnUpdate): the update dialog reads it. */
+    val own: StoreEntry? = null
+)
 
 /** What app.json holds once checked. */
 data class AppJson(
@@ -346,11 +352,18 @@ class Catalog(
     suspend fun load(): CatalogResult {
         val live = loadLive()
         val extra = withContext(Dispatchers.IO) { seeded() }
-        if (extra.isEmpty()) return overlaid(live)
+        if (extra.isEmpty()) return apart(overlaid(live))
         // A seeded entry replaces the live one of the same package; the error of the live read stays, so a test sees both.
         val merged = (live.entries.filter { l -> extra.none { it.packageName == l.packageName } } + extra)
             .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
-        return overlaid(live.copy(entries = merged))
+        return apart(overlaid(live.copy(entries = merged)))
+    }
+
+    // Store's own package leaves the list, every screen and the door reading it; its newest release rides along apart (OwnUpdate). Google Play and
+    // the App Store never list themselves; the split is Kotlin's partition (https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/partition.html).
+    private fun apart(result: CatalogResult): CatalogResult {
+        val (mine, others) = result.entries.partition(OwnUpdate::isOwn)
+        return result.copy(entries = others, own = OwnUpdate.newest(mine))
     }
 
     // The debug overlay applied last, over the live and the seeded entries; off the main thread as load does it

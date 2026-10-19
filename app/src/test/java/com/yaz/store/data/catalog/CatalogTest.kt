@@ -310,6 +310,34 @@ class CatalogTest {
         assertNull(result.error)
     }
 
+    // Store's own package: out of the list, its release apart. Same fake source as the tests above, JUnit 4 asserts
+    // (https://github.com/junit-team/junit4/wiki/Assertions).
+
+    // https://github.com/junit-team/junit4/wiki/Assertions
+    @Test
+    fun `Store's own package, release and debug, is in no list and its newest release rides apart`() {
+        val own = appJson.replace("com.yaz.calculator", "com.yaz.store").replace("\"versionCode\":14", "\"versionCode\":30").replace("0.3.6", "0.2.0")
+        val debug = appJson.replace("com.yaz.calculator", "com.yaz.store.debug").replace("\"versionCode\":14", "\"versionCode\":40").replace("0.3.6", "0.3.0")
+        val fake = apps("Calculator", "Store", "StoreDebug", extra = mapOf(url("Store", "app.json") to own, url("StoreDebug", "app.json") to debug))
+        val result = load(fake)
+        assertEquals(listOf("com.yaz.calculator"), result.entries.map { it.packageName })
+        assertEquals("com.yaz.store.debug", result.own?.packageName)
+        assertEquals(40L, result.own?.versionCode)
+        assertNull(load(apps("Calculator")).own)
+    }
+
+    // https://github.com/junit-team/junit4/wiki/Assertions
+    @Test
+    fun `a Store release whose APK cannot be read is no row either`() {
+        val base = apps("Calculator", extra = mapOf(
+            list to repos("Calculator", "Store"),
+            url("Store", "SHA256SUMS.txt") to ("0".repeat(64) + "  ./Store-0.1.0.apk")
+        ))
+        val result = load(Fake(base.answers, base.tags + ("Store" to "v1.0.0")))
+        assertEquals(listOf("Calculator"), result.entries.map { it.repo })
+        assertNull(result.own)
+    }
+
     // The date and sizes of a tag
 
     private fun entry(repo: String = "A", tag: String = "v1.0.0") = load(apps(repo)).entries.single().copy(tag = tag)

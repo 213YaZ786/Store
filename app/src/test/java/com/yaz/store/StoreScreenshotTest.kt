@@ -20,7 +20,11 @@ import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
+import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.CatalogError
+import com.yaz.store.data.catalog.ReleaseDetails
+import com.yaz.store.feature.home.OwnOffer
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.Settings
@@ -61,7 +65,7 @@ class StoreScreenshotTest {
     )
 
     // As captureForDevice: the qualifiers first, then the content set on the activity again.
-    private fun capture(name: String, body: @Composable () -> Unit) {
+    private fun capture(name: String, screen: Boolean = false, body: @Composable () -> Unit) {
         devices.forEach { (device, qualifiers) ->
             RuntimeEnvironment.setQualifiers(qualifiers)
             listOf(false, true).forEach { night ->
@@ -76,10 +80,9 @@ class StoreScreenshotTest {
                     }
                 }
                 compose.waitForIdle()
-                compose.onRoot().captureRoboImage(
-                    "src/test/screenshots/${name}_${device}_${if (night) "dark" else "light"}.png",
-                    roborazziOptions = options
-                )
+                val file = "src/test/screenshots/${name}_${device}_${if (night) "dark" else "light"}.png"
+                if (screen) captureScreenRoboImage(file, roborazziOptions = options)
+                else compose.onRoot().captureRoboImage(file, roborazziOptions = options)
             }
         }
     }
@@ -100,8 +103,22 @@ class StoreScreenshotTest {
         HomeContent(HomeState(loaded = true, apps = Fixtures.everything, details = Fixtures.details, jobs = listOf(running)), onRetry = {})
     }
 
+    // The dialog sits in its own window: the whole screen is captured, as Roborazzi does for dialogs (captureScreenRoboImage,
+    // https://github.com/takahirom/roborazzi#capture-screen-with-dialog).
     @Test
-    fun homeOffline() = capture("home_offline") {
+    fun homeOwnUpdate() = capture("home_own_update", screen = true) {
+        val entry = Fixtures.status("Store", "Store", AppState.UPDATE, "0.1.0", "0.1.1", packageName = "com.yaz.store").entry
+        HomeContent(
+            HomeState(
+                loaded = true, apps = Fixtures.current, own = OwnOffer(entry, "0.1.0"),
+                details = mapOf("Store/v0.1.1" to ReleaseDetails(null, mapOf("Store.apk" to 4_200_000L)))
+            ),
+            onRetry = {}
+        )
+    }
+
+    @Test
+    fun homeOffline()= capture("home_offline") {
         HomeContent(
             HomeState(loaded = true, apps = Fixtures.current, error = CatalogError.RateLimited(1_791_000_000L), listCached = true),
             onRetry = {}
