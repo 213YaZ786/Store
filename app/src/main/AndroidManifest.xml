@@ -19,6 +19,14 @@
     <!-- The type of that service: a transfer of data (Android 14 and later). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- The door of the update kit: held by an app signed with one of our seven keys (android:knownCerts, API 31) or with Store's own key
+         (the debug builds). DoorProvider checks the caller again inside call(). Android's known-signer permission:
+         https://developer.android.com/guide/topics/permissions/defining -->
+    <permission
+        android:name="${applicationId}.permission.DOOR"
+        android:protectionLevel="signature|knownSigner"
+        android:knownCerts="@array/our_certs" />
+
     <!-- Package visibility (https://developer.android.com/training/package-visibility) without QUERY_ALL_PACKAGES:
          every app with a launcher entry, which holds ours. Android also shows an installer the apps it installed. -->
     <queries>
@@ -88,6 +96,14 @@
             android:name=".data.update.UpdateCheckJob"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Our apps tell Store when they open and when the user leaves them ("opened", "left"); the update is downloaded and installed
+             by Store. Exported behind the DOOR permission, and the caller is checked as ours inside call(). Pattern of Contacts' CardsProvider. -->
+        <provider
+            android:name=".data.door.DoorProvider"
+            android:authorities="${applicationId}.door"
+            android:exported="true"
+            android:permission="${applicationId}.permission.DOOR" />
 
         <!-- The Cancel button of that notification. Named by an explicit PendingIntent, never exported. -->
         <receiver

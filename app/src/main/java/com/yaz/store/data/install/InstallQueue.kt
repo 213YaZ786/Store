@@ -21,7 +21,6 @@ import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.net.NetError
-import com.yaz.store.data.net.ReleaseNet
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -32,9 +31,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 
 enum class JobStep(val active: Boolean) {
@@ -177,9 +173,6 @@ class InstallQueue(
         mutable.update { list -> list.map { if (it.serial == serial && it.step.active) transform(it) else it } }
     }
 
-    // A reason that stops an entry; its words are what the person reads.
-    private class Refused(val why: String) : Exception(why)
-
     private suspend fun process(job: InstallJob) {
         val entry = job.entry
         val name = entry.packageName
@@ -208,23 +201,14 @@ class InstallQueue(
     private suspend fun run(job: InstallJob, file: File) {
         val entry = job.entry
         val name = entry.packageName
-        val apkName = entry.apkName ?: throw Refused("No APK for this phone.")
         val serial = job.serial
         change(serial) { it.copy(step = JobStep.DOWNLOADING, progress = 0f) }
-        // 1. The sum of this exact APK, then the file, then the sum of the file.
-        val expected = StoreChecks.expectedSum(backend.sums(entry.repo, entry.tag), apkName) ?: throw Refused(StoreChecks.SUM_MISSING)
-        val self = currentCoroutineContext().job
-        backend.download(
-            entry.repo, entry.tag, apkName, file,
+        // 1 and 2: the sum, the file, the sum of the file, the isolated inspector and the checks (Fetch.checked, shared with the door's staging).
+        Fetch.checked(
+            backend, entry, file,
             onProgress = { p -> change(serial) { it.copy(progress = p) } },
-            beforeRead = { self.ensureActive() }
+            onChecking = { change(serial) { it.copy(step = JobStep.CHECKING, progress = 1f) } }
         )
-        self.ensureActive()
-        change(serial) { it.copy(step = JobStep.CHECKING, progress = 1f) }
-        if (ReleaseNet.sha256(file) != expected) throw Refused(StoreChecks.SUM_WRONG)
-        // 2. Only now is the file opened, by the kit's isolated inspector.
-        val info = backend.inspect(file) ?: throw Refused(StoreChecks.UNREADABLE)
-        StoreChecks.refusal(entry, info, backend.installedSigners(name), backend.sdk)?.let { throw Refused(it) }
         // 3. The kit's session: no question, Store as the source, the update ownership claimed on a first install.
         change(serial) { it.copy(step = JobStep.INSTALLING) }
         val request = InstallRequest(

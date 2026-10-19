@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The SHA-256 digests of the certificates our apps are signed with (data/trust/OurKeys), for the DOOR permission's android:knownCerts.
+     Upper case hex, as the system computes a signer's digest (PackageUtils.computeSha256Digest) and compares them as strings
+     (SigningDetails.hasAncestorOrSelfWithDigest, https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/content/pm/SigningDetails.java);
+     the attribute: "a reference to an array resource containing the signing certificate digests"
+     (https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/res/res/values/attrs_manifest.xml, knownCerts).
+     A test keeps this list equal to OurKeys. -->
+<resources>
+    <string-array name="our_certs" translatable="false">
+        <!-- YAZ apps -->
+        <item>F006B86DADC9BE1C68DEAB3F53500DC04F7CB03A69D5BBD79DAA0CAD8160431B</item>
+        <!-- Amehrug -->
+        <item>4691537A9FDAD164E7C35AF256565821C14BB657E518344209A5AC10C8A1D49A</item>
+        <!-- Mushaf -->
+        <item>8B92DF3096399BA496EAC3B04CC43516F881165C8F6A7CD832AB5EB1F48179EC</item>
+        <!-- MTGA -->
+        <item>BA03AB7DD2E037EA72478C6EBC3676E641DA5ADB642A9BEC13BC978D3D81F395</item>
+        <!-- LinkedOut -->
+        <item>2B47625E39D7B546C711BA4B2682D5CFA3CD08698A6F31517108A4620685D36D</item>
+        <!-- Frontr -->
+        <item>56853FE216B763A7E63B83B2881DB9502117960388A041236D54AC6E62B6EA1B</item>
+        <!-- Yid -->
+        <item>5D936F4EFA3E8DB62B9F60AA007B60E31A56B3FF906E1F1C9122FD6800DAF6B6</item>
+    </string-array>
+</resources>

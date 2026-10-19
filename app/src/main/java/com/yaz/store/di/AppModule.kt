@@ -8,7 +8,14 @@ import com.yaz.store.core.install.Installer
 import com.yaz.store.core.install.PrefsSessionStore
 import com.yaz.store.core.install.SessionRegistry
 import com.yaz.store.BuildConfig
+import android.content.pm.PackageManager
+import android.os.Build
 import com.yaz.store.data.catalog.Catalog
+import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.door.Door
+import com.yaz.store.data.door.DoorGuard
+import com.yaz.store.data.door.DoorProvider
+import com.yaz.store.data.door.Staging
 import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.catalog.Seeded
 import com.yaz.store.data.catalog.phoneAbis
@@ -54,6 +61,32 @@ val appModule = module {
             File(app.cacheDir, DOWNLOADS),
             CoroutineScope(SupervisorJob() + Dispatchers.IO),
             onQueued = { InstallService.onQueued(app) }
+        )
+    }
+    // The door (data/door): the update kit's "opened" and "left" calls. Its own installer, so a door install never meets the queue's
+    // session (each Installer follows its own session id); the staged files live in the downloads folder.
+    single {
+        val app = androidContext()
+        DoorGuard(
+            signersOf = { Installed.read(app, it)?.signers },
+            sameSignerAsStore = { app.packageManager.checkSignatures(app.packageName, it) == PackageManager.SIGNATURE_MATCH },
+            debug = BuildConfig.DEBUG
+        )
+    }
+    single {
+        val app = androidContext()
+        val backend = StoreBackend(app, get(), get(), Installer(app, get()), wifiOnly = { get<SettingsStore>().current.wifiOnly })
+        Staging(backend, File(app.cacheDir, DOWNLOADS), installedVersion = { Installed.read(app, it)?.versionCode })
+    }
+    single {
+        val app = androidContext()
+        Door(
+            get(), get(),
+            load = { get<Catalog>().load().entries },
+            statusOf = { entry, caller ->
+                Door.status(entry, caller, Installed.read(app, caller.pkg), Build.VERSION.SDK_INT, app.packageName)
+            },
+            log = DoorProvider::debugLog
         )
     }
 }
