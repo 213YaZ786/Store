@@ -15,8 +15,6 @@
     <string name="update_all_size">Update all · %1$s</string>
     <string name="installed_title">Installed</string>
     <string name="available_title">Available</string>
-    <string name="group_yaz">YAZ</string>
-    <string name="group_more">More</string>
     <string name="up_to_date">Up to date</string>
     <string name="versions_move">%1$s → %2$s</string>
     <string name="versions_move_size">%1$s → %2$s · %3$s</string>
@@ -101,9 +99,6 @@
     <string name="setup_installs_allow">Allow installs</string>
     <string name="setup_notifications">Notifications</string>
     <string name="setup_notifications_allow">Allow notifications</string>
-    <string name="setup_hand_over">Let Store update your apps</string>
-    <string name="setup_hand_over_none">Nothing to hand over</string>
-    <string name="setup_loading">Looking at your apps</string>
     <string name="setup_done">Done</string>
     <string name="setup_skip">Skip</string>
     <string name="setup_start">Start</string>

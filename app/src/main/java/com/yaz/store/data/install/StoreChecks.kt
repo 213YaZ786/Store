@@ -42,8 +42,9 @@ object StoreChecks {
     fun refusal(entry: StoreEntry, info: ApkInfo, installedSigners: Set<String>?, sdk: Int): String? {
         if (info.splitName != null) return "The file is a part of an app, not an app."
         if (!info.verified || info.signers.isEmpty()) return "The file is not signed, or its signature is broken."
-        if (info.packageName != entry.packageName) return "The file is another app than the release says."
-        if (info.versionCode != entry.versionCode) return "The file is another version than the release says."
+        // An entry whose APK could not be read by ranges (Catalog.fromApk) has no package or version to compare: the file's own are used.
+        if (!entry.unread && info.packageName != entry.packageName) return "The file is another app than the release says."
+        if (!entry.unread && info.versionCode != entry.versionCode) return "The file is another version than the release says."
         if (!OurKeys.allOurs(info.signers.toSet())) return "The file is signed with a key that is not ours."
         if (installedSigners != null && installedSigners != info.signers.map { it.lowercase() }.toSet()) {
             return "The file is signed differently from the app on the phone."

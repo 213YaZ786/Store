@@ -52,7 +52,7 @@ fun StoreApp() {
 
     NavHost(nav, startDestination = if (settings.setupDone) Routes.HOME else Routes.SETUP) {
         composable(Routes.SETUP) {
-            SetupScreen(model, onFinish = { nav.navigate(Routes.HOME) { popUpTo(Routes.SETUP) { inclusive = true } } })
+            SetupScreen(onFinish = { nav.navigate(Routes.HOME) { popUpTo(Routes.SETUP) { inclusive = true } } })
         }
         composable(Routes.HOME) {
             HomeScreen(model, onSettings = { nav.navigate(Routes.SETTINGS) }, onPage = { nav.navigate(Routes.app(it)) })

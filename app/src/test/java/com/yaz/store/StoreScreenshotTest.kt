@@ -142,11 +142,11 @@ class StoreScreenshotTest {
 
     @Test
     fun setupStart() = capture("setup_start") {
-        SetupContent(canInstall = false, notifying = false, loaded = true, toHand = listOf(Fixtures.sms2), jobs = emptyList())
+        SetupContent(canInstall = false, notifying = false)
     }
 
     @Test
     fun setupDone() = capture("setup_done") {
-        SetupContent(canInstall = true, notifying = true, loaded = true, toHand = emptyList(), jobs = emptyList())
+        SetupContent(canInstall = true, notifying = true)
     }
 }

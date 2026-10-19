@@ -71,6 +71,14 @@
             android:isolatedProcess="true"
             android:process=":inspector" />
 
+        <!-- Reads an APK of which only a few ranges were fetched (the list of releases with no app.json), in a process of its own
+             with no permission, no files and no network. The same declaration as the inspector above. -->
+        <service
+            android:name=".data.sparse.SparseInspectorService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":sparse" />
+
         <!-- Decodes pictures in a process of its own with no permission, no files and no network; as the header of the
              safemedia kit's DecoderService says (the same declaration as SMS and Contacts). The icons of the releases. -->
         <service

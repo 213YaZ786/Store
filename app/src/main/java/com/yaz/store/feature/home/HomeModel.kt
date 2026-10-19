@@ -2,7 +2,7 @@ package com.yaz.store.feature.home
 
 // What Home shows, decided apart from drawing so a test reads it. The two lists (an app installed or not, GrapheneOS' App Store shows
 // every app once with one state button, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/MainScreen.kt),
-// the family groups (YAZ first, then the others, each alphabetical: Kotlin's sortedWith,
+// each list alphabetical with no family headings (GrapheneOS' App Store lists every app in one list; Kotlin's sortedWith,
 // https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/sorted-with.html) and the state button of a card. Android's names of
 // the API levels are Build.VERSION_CODES' (https://developer.android.com/reference/android/os/Build.VERSION_CODES).
 import androidx.annotation.StringRes
@@ -19,31 +19,21 @@ import com.yaz.store.data.install.InstallJob
  */
 val StoreEntry.detailsKey: String get() = "$repo/$tag"
 
-/** A heading and its apps. */
-data class AppGroup(@StringRes val title: Int, val apps: List<AppStatus>)
-
 object HomeModel {
-
-    /** Apps of the suite carry this prefix (the YAZ apps, one signing key). */
-    private const val YAZ = "com.yaz."
 
     /** The apps found on this phone, and the ones that are not. A foreign copy is installed, left alone. */
     fun installed(apps: List<AppStatus>): List<AppStatus> = apps.filter { it.installed != null }
 
     fun available(apps: List<AppStatus>): List<AppStatus> = apps.filter { it.installed == null }
 
-    /** com.yaz.* apps under "YAZ", the others under "More", each alphabetical; an empty group is left out. */
-    fun groups(apps: List<AppStatus>): List<AppGroup> {
-        val order = compareBy<AppStatus>({ it.entry.label.lowercase() }, { it.entry.packageName })
-        val (yaz, more) = apps.partition { it.entry.packageName.startsWith(YAZ) }
-        return listOf(
-            AppGroup(R.string.group_yaz, yaz.sortedWith(order)),
-            AppGroup(R.string.group_more, more.sortedWith(order))
-        ).filter { it.apps.isNotEmpty() }
-    }
+    // One alphabetical list, by label then package: GrapheneOS' App Store sorts its single list by name
+    // (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/MainScreen.kt), with Kotlin's sortedWith
+    // (https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/sorted-with.html).
+    fun sorted(apps: List<AppStatus>): List<AppStatus> =
+        apps.sortedWith(compareBy({ it.entry.label.lowercase() }, { it.entry.packageName }))
 
     /** The updates the Updates zone lists, in the lists' order. */
-    fun updates(apps: List<AppStatus>): List<AppStatus> = groups(apps).flatMap { it.apps }.filter { it.state == AppState.UPDATE }
+    fun updates(apps: List<AppStatus>): List<AppStatus> = sorted(apps).filter { it.state == AppState.UPDATE }
 
     /** Every installed app is current and Store holds it: the state the easter egg waits in. */
     fun allCurrent(apps: List<AppStatus>): Boolean =

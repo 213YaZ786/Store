@@ -58,7 +58,14 @@ data class StoreEntry(
     /** The APK for this phone's ABIs, or null when none of the release's APKs fits: shown, never installed. */
     val apkName: String?,
     /** icon.png of the release when it has one. */
-    val iconUrl: String?
+    val iconUrl: String?,
+    /**
+     * The APK could not be read, so the entry is the repo by its name with Install: [packageName] is a placeholder, [versionCode] is 0 and the
+     * full install path (download, sum, inspector, signers) checks the real file. Never true for an entry read from app.json.
+     */
+    val unread: Boolean = false,
+    /** The release has no app.json: package, version and label were read from the APK by ranges (data/sparse). */
+    val sparse: Boolean = false
 ) {
     val apkUrl: String? get() = apkName?.let { ReleaseNet.downloadUrl(repo, tag, it) }
     val sumsUrl: String get() = ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt")
@@ -147,6 +154,7 @@ object CatalogRules {
     private val LOCALE = Regex("[A-Za-z0-9_-]{1,$MAX_LOCALE_TAG}")
     // A release APK's name: GitHub's file name alphabet, 200 at most.
     private val APK = Regex("[A-Za-z0-9._-]{1,200}")
+    private val SUM = Regex("[0-9a-fA-F]{64}")
 
     /** Whether [name] is a package name by Android's rule and at most 255 characters. */
     fun validPackage(name: String): Boolean = name.length <= MAX_PACKAGE && PACKAGE.matches(name)
@@ -189,6 +197,30 @@ object CatalogRules {
             apks = dto.apks.distinct()
         )
     }
+
+    /**
+     * The names of the release APKs a SHA256SUMS.txt lists, in its order, without the debug ones: a line is the digest, whitespace, an optional
+     * '*' and a name, which may start with "./" (the CI runs sha256sum on "./<file>"); only names [validApk] accepts. The line reading is
+     * data/install/StoreChecks.expectedSum's, after GNU coreutils' checksum file format
+     * (https://www.gnu.org/software/coreutils/manual/html_node/md5sum-invocation.html).
+     */
+    fun apkNames(sums: String): List<String> {
+        val names = LinkedHashSet<String>()
+        for (raw in sums.lineSequence()) {
+            val line = raw.trim()
+            val cut = line.indexOfFirst { it == ' ' || it == '\t' }
+            if (cut != 64 || !SUM.matches(line.substring(0, cut))) continue
+            val name = line.substring(cut).trim().removePrefix("*").removePrefix("./")
+            if (validApk(name) && names.size < MAX_APKS) names.add(name)
+        }
+        return names.toList()
+    }
+
+    /**
+     * The package name an entry gets when its APK cannot be read: unique per repo, never a real package (no app is called "unread"), so nothing on
+     * the phone matches it.
+     */
+    fun placeholderPackage(repo: String): String = "unread." + repo.lowercase().replace(Regex("[^a-z0-9]"), "_")
 
     /**
      * The description for the phone's languages, [tags] in the phone's order (BCP 47, `fr-FR`): for each, the exact tag,
@@ -277,6 +309,13 @@ object CatalogRules {
     private fun instant(text: String): Instant? = try { Instant.parse(text) } catch (e: DateTimeParseException) { null }
 }
 
+// What an APK says by ranges: data/sparse/SparseApk reads a RangeSource into a sparse file, parsed in the isolated inspector with apksig
+// (https://android.googlesource.com/platform/tools/apksig/+/refs/heads/main/src/main/java/com/android/apksig/apk/ApkUtils.java).
+/** Reads the package, version, label and minSdk of a release APK without downloading it; null when it cannot be read as an app. */
+fun interface ApkProbe {
+    suspend fun probe(repo: String, tag: String, apkName: String): com.yaz.store.data.sparse.SparseInfo?
+}
+
 /** The phone's languages in order, as BCP 47 tags (PackageFacts.device reads them the same way). */
 fun phoneLocaleTags(): List<String> {
     val locales = Resources.getSystem().configuration.locales
@@ -293,7 +332,9 @@ class Catalog(
     private val locales: () -> List<String> = ::phoneLocaleTags,
     private val abis: () -> List<String> = ::phoneAbis,
     /** Debug builds only (AppModule): entries a test puts beside the live list, see [Seeded]. Empty in the release build. */
-    private val seeded: () -> List<StoreEntry> = { emptyList() }
+    private val seeded: () -> List<StoreEntry> = { emptyList() },
+    /** Reads a release APK with no app.json by ranges (data/sparse); null lists such a repo by its name. */
+    private val probe: ApkProbe? = null
 ) {
 
     private sealed interface Outcome {
@@ -372,12 +413,19 @@ class Catalog(
         return details
     }
 
-    // One repo: the tag of its latest release from the first hop of latest/download/app.json, then app.json of that tag (a 404 is no app.json,
-    // so no app of ours), the APK for this phone among the ones it lists, and icon.png when the release has one.
-    private fun entryOf(repo: String, tags: List<String>, phoneAbis: List<String>): Outcome {
+    // One repo: the tag of its latest release from the first hop of latest/download/app.json, then app.json of that tag, the APK for this phone
+    // among the ones it lists, and icon.png when the release has one. A 404 on app.json is a release made before app.json existed: its APKs are
+    // named by SHA256SUMS.txt and read by ranges (fromApk). An app.json that does not pass the rules is no app of ours.
+    private suspend fun entryOf(repo: String, tags: List<String>, phoneAbis: List<String>): Outcome {
         try {
             val tag = source.latestTag(repo)
-            val app = CatalogRules.parseAppJson(source.getJson(ReleaseNet.downloadUrl(repo, tag, "app.json"))) ?: return Outcome.Skipped
+            val text = try {
+                source.getJson(ReleaseNet.downloadUrl(repo, tag, "app.json"))
+            } catch (e: NetError) {
+                if (e.kind != NetError.Kind.NOT_FOUND) throw e
+                return fromApk(repo, tag, phoneAbis)
+            }
+            val app = CatalogRules.parseAppJson(text) ?: return Outcome.Skipped
             val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png")
             return Outcome.Found(
                 StoreEntry(
@@ -397,6 +445,38 @@ class Catalog(
             // A repo with no release, or a release without app.json, is simply not an app of ours.
             return if (e.kind == NetError.Kind.NOT_FOUND) Outcome.Skipped else Outcome.Failed(e)
         }
+    }
+
+    // A release with no app.json: the non-debug APKs named by its SHA256SUMS.txt (a 404 or no APK in it is no app), the one for this phone
+    // (komi-store's asset choice, https://github.com/komi-store/komi-store, AssetArchitectureMatcher.kt, through AbiChoice), and what that APK
+    // says read by ranges (https://www.rfc-editor.org/rfc/rfc9110#section-14, data/sparse). An APK that cannot be read is the repo by its name with
+    // Install, as komi-store lists a repo by its name (https://github.com/komi-store/komi-store); the full install path checks the file.
+    private suspend fun fromApk(repo: String, tag: String, phoneAbis: List<String>): Outcome {
+        val sums = try {
+            source.getJson(ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt"))
+        } catch (e: NetError) {
+            if (e.kind == NetError.Kind.NOT_FOUND) return Outcome.Skipped
+            throw e
+        }
+        val names = CatalogRules.apkNames(sums)
+        if (names.isEmpty()) return Outcome.Skipped
+        val chosen = AbiChoice.choose(names, phoneAbis)
+        val info = chosen?.let { probe?.probe(repo, tag, it) }
+        val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png").takeIf { source.exists(it) }
+        val entry = if (info != null) {
+            StoreEntry(
+                repo = repo, tag = tag, packageName = info.packageName, label = info.label ?: repo, description = "",
+                versionCode = info.versionCode, versionName = info.versionName.ifEmpty { tag.removePrefix("v") }, minSdk = info.minSdk,
+                apkName = chosen, iconUrl = icon, sparse = true
+            )
+        } else {
+            StoreEntry(
+                repo = repo, tag = tag, packageName = CatalogRules.placeholderPackage(repo), label = repo, description = "",
+                versionCode = 0, versionName = tag.removePrefix("v"), minSdk = 1,
+                apkName = chosen, iconUrl = icon, unread = true, sparse = true
+            )
+        }
+        return Outcome.Found(entry)
     }
 
     private fun errorOf(e: NetError): CatalogError = when (e.kind) {

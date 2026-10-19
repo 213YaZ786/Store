@@ -24,6 +24,9 @@ import com.yaz.store.data.install.InstallQueue
 import com.yaz.store.data.install.InstallService
 import com.yaz.store.data.install.StoreBackend
 import com.yaz.store.data.net.ReleaseNet
+import com.yaz.store.data.sparse.SparseApk
+import com.yaz.store.data.sparse.SparseInspector
+import com.yaz.store.data.sparse.SparseProbe
 import com.yaz.store.data.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +47,9 @@ val appModule = module {
         val app = androidContext()
         Catalog(
             get<ReleaseNet>(), File(app.cacheDir, "notes"),
-            seeded = if (BuildConfig.DEBUG) ({ Seeded.read(File(app.filesDir, "debug-seed.json"), phoneLocaleTags(), phoneAbis()) }) else ({ emptyList() })
+            seeded = if (BuildConfig.DEBUG) ({ Seeded.read(File(app.filesDir, "debug-seed.json"), phoneLocaleTags(), phoneAbis()) }) else ({ emptyList() }),
+            // A release with no app.json is read from its APK by ranges, in the isolated SparseInspectorService (data/sparse).
+            probe = SparseProbe(get<ReleaseNet>()::ranges, SparseApk(SparseInspector(app), File(app.cacheDir, "sparse-work")), File(app.cacheDir, "sparse"))
         )
     }
     // The release icons of apps not installed, one file per tag in the cache.

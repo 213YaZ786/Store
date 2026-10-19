@@ -45,6 +45,18 @@ interface ReleaseSource {
     fun exists(url: String): Boolean
 }
 
+// A byte source in the shape of apksig's DataSource (size, then a read at an offset; Apache-2.0,
+// https://android.googlesource.com/platform/tools/apksig/+/refs/heads/main/src/main/java/com/android/apksig/util/DataSource.java), fed by
+// HTTP range requests (RFC 9110 section 14, https://www.rfc-editor.org/rfc/rfc9110#section-14).
+/** A release file read by byte ranges; every method throws [NetError]. */
+interface RangeSource {
+    /** The file's length in bytes, from the first answer's Content-Range. */
+    fun length(): Long
+
+    /** Exactly the bytes [start]..[endInclusive], else a NetError. */
+    fun read(start: Long, endInclusive: Long): ByteArray
+}
+
 class ReleaseNet(cacheDir: File) : ReleaseSource {
 
     private val cache = File(cacheDir, "net")
@@ -162,6 +174,57 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         }
     }
 
+    // A release file read by byte ranges (RFC 9110 section 14, https://www.rfc-editor.org/rfc/rfc9110#section-14): the same open as every other
+    // read (allow-listed start, every redirect checked), the Range header on each hop, 206 only, Content-Range checked against what was asked and
+    // against the length first seen (checkRange). The address where the redirects ended is kept for the next reads (GitHub's release asset host
+    // answers 206, checked with curl 2026-10-19) and dropped for the original one when it stops answering (its signed address expires).
+    fun ranges(url: String): RangeSource {
+        val first = parse(url)
+        return object : RangeSource {
+            private var total = -1L
+            private var resolved: URL? = null
+
+            override fun length(): Long {
+                if (total < 0) read(0, 0)
+                return total
+            }
+
+            override fun read(start: Long, endInclusive: Long): ByteArray {
+                if (start < 0 || endInclusive < start || endInclusive - start >= MAX_RANGE) throw NetError(NetError.Kind.REFUSED, message = "bad range")
+                if (total >= 0 && endInclusive >= total) throw NetError(NetError.Kind.REFUSED, message = "range past the end")
+                try {
+                    resolved?.let { known ->
+                        try {
+                            return fetchRange(known, start, endInclusive)
+                        } catch (e: NetError) {
+                            if (e.kind == NetError.Kind.OFFLINE) throw e
+                            resolved = null
+                        }
+                    }
+                    return fetchRange(first, start, endInclusive)
+                } catch (e: NetError) {
+                    throw e
+                } catch (e: IOException) {
+                    throw NetError(NetError.Kind.OFFLINE, message = "offline")
+                }
+            }
+
+            private fun fetchRange(from: URL, start: Long, end: Long): ByteArray {
+                val conn = open(from, null, "bytes=$start-$end") ?: throw NetError(NetError.Kind.REFUSED, message = "304 on a range")
+                try {
+                    total = checkRange(conn.getHeaderField("Content-Range"), start, end, total)
+                    val want = end - start + 1
+                    val body = conn.inputStream.use { readCapped(it, want) }
+                    if (body.size.toLong() != want) throw NetError(NetError.Kind.REFUSED, message = "short range")
+                    resolved = checked(conn.url)
+                    return body
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }
+    }
+
     // The kit's download, with its 200 MiB cap.
     // [beforeRead] runs before each read of the body: a caller that is cancelled throws from it (kotlinx.coroutines' ensureActive),
     // so a download stops at the next buffer and the connection is closed by the finally below.
@@ -220,13 +283,20 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
      * read here and must be HTTPS to one of GitHub's hosts before it is followed, three at most (the kit's open).
      * The tag goes only to the first address, never to where a redirect leads.
      */
-    private fun open(start: URL, etag: String?): HttpURLConnection? {
+    // [range] ("bytes=a-b", RFC 9110 section 14) is sent to every hop; a ranged read is answered 206 and only 206 (a 200 means the server
+    // ignored the range and would send the whole file: refused), a plain read 200 and only 200.
+    private fun open(start: URL, etag: String?, range: String? = null): HttpURLConnection? {
         var url = start
         var hops = 0
         while (true) {
             val conn = request(url, "GET", if (hops == 0) etag else null)
+            if (range != null) conn.setRequestProperty("Range", range)
             when (val code = conn.responseCode) {
-                200 -> return conn
+                200, 206 -> {
+                    if (acceptable(code, range != null)) return conn
+                    conn.disconnect()
+                    throw NetError(NetError.Kind.REFUSED, message = if (code == 200) "range ignored" else "unasked partial answer")
+                }
                 304 -> {
                     conn.disconnect()
                     return null
@@ -263,6 +333,28 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
 
         /** The list of repos and the files: GitHub's API, its pages and where it keeps release files (the kit's GITHUB). */
         internal val GITHUB = setOf("api.github.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
+
+        /** One ranged read is far smaller than this (the sparse reader asks for 4 MiB at most). */
+        const val MAX_RANGE = 8L * 1024 * 1024
+
+        /** A ranged read is answered 206 and only 206 (a 200 is the whole file, the range ignored); a plain read 200 and only 200 (RFC 9110 section 15.3). */
+        internal fun acceptable(code: Int, ranged: Boolean): Boolean = if (ranged) code == 206 else code == 200
+
+        private val CONTENT_RANGE =Regex("bytes (\\d{1,15})-(\\d{1,15})/(\\d{1,15})")
+
+        /**
+         * The length of the file in a 206 answer's Content-Range ("bytes 0-0/1234", RFC 9110 section 14.4), after checking that it names exactly
+         * the bytes [start]..[end] that were asked and, when the length is already known ([knownTotal] >= 0), the same length. Else REFUSED.
+         */
+        internal fun checkRange(header: String?, start: Long, end: Long, knownTotal: Long): Long {
+            val m = header?.trim()?.let { CONTENT_RANGE.matchEntire(it) } ?: throw NetError(NetError.Kind.REFUSED, message = "no Content-Range")
+            val from = m.groupValues[1].toLong()
+            val to = m.groupValues[2].toLong()
+            val total = m.groupValues[3].toLong()
+            if (from != start || to != end || to >= total) throw NetError(NetError.Kind.REFUSED, message = "Content-Range mismatch")
+            if (knownTotal >= 0 && total != knownTotal) throw NetError(NetError.Kind.REFUSED, message = "length changed")
+            return total
+        }
 
         /** The query of the one repo list we ask for. */
         const val REPO_LIST_QUERY = "per_page=100&type=owner"

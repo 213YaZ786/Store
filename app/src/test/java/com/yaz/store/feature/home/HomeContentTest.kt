@@ -74,18 +74,17 @@ class HomeContentTest {
     }
 
     @Test
-    fun `installed apps and available apps are two lists, YAZ apps first under their heading`() {
+    fun `installed apps and available apps are two alphabetical lists with no family heading`() {
         val state = HomeState(loaded = true, apps = Fixtures.everything)
         compose.setContent { HomeContent(state, onRetry = {}) }
         compose.onNodeWithText("Installed").assertIsDisplayed()
         compose.onNodeWithText("Available").assertIsDisplayed()
-        // The groups, in each list.
-        val installed = HomeModel.groups(HomeModel.installed(state.apps))
-        assertEquals(listOf("Calculator", "Contacts", "Dialer", "SMS"), installed[0].apps.map { it.entry.label })
-        assertEquals(listOf("MTGA", "Mushaf"), installed[1].apps.map { it.entry.label })
-        val available = HomeModel.groups(HomeModel.available(state.apps))
-        assertEquals(listOf("Files", "Keyboard", "Voice"), available[0].apps.map { it.entry.label })
-        assertEquals(1, available.size)
+        assertEquals(0, compose.onAllNodesWithText("YAZ", substring = true).fetchSemanticsNodes().size)
+        assertEquals(0, compose.onAllNodesWithText("More", substring = false).fetchSemanticsNodes().size)
+        val installed = HomeModel.sorted(HomeModel.installed(state.apps))
+        assertEquals(listOf("Calculator", "Contacts", "Dialer", "MTGA", "Mushaf", "SMS"), installed.map { it.entry.label })
+        val available = HomeModel.sorted(HomeModel.available(state.apps))
+        assertEquals(listOf("Files", "Keyboard", "Voice"), available.map { it.entry.label })
     }
 
     @Test

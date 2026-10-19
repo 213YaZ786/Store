@@ -50,7 +50,7 @@ class CardActions(
     val onCancel: (String) -> Unit
 )
 
-/** A list's heading, then its groups (YAZ, More), each with its cards wrapped over the width. */
+/** A list's heading, then its cards in one alphabetical list, wrapped over the width. */
 @Composable
 internal fun AppList(
     title: Int,
@@ -67,15 +67,7 @@ internal fun AppList(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, top = 6.dp)
         )
-        HomeModel.groups(apps).forEach { group ->
-            Text(
-                stringResource(group.title),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp)
-            )
-            CardFlow(group.apps, jobs, actions, seen, keyPrefix = title.toString())
-        }
+        CardFlow(HomeModel.sorted(apps), jobs, actions, seen, keyPrefix = title.toString())
     }
 }
 
