@@ -18,10 +18,24 @@ class DoorProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
-        // A call can come before the application's start-up has built the door: nothing is done.
-        val door = GlobalContext.getOrNull()?.get<Door>() ?: return Bundle()
-        val state = door.handle(method, callingPackage) ?: return Bundle()
+        val door = door() ?: return Bundle()
+        // A caller that cannot be named is refused by the guard (null); a provider not attached to a binder call has none to give.
+        val caller = try { callingPackage } catch (e: RuntimeException) { null }
+        val state = door.handle(method, caller) ?: return Bundle()
         return Bundle().apply { putString(Door.STATE, state) }
+    }
+
+    // Android publishes a provider before Application.onCreate has run, so a call that wakes Store from nothing can arrive while Koin is
+    // still starting (seen live 2026-10-19: the first call after a force-stop got an empty answer). Wait for it, bounded; Koin's
+    // GlobalContext.getOrNull() is null until startKoin has run (https://insert-koin.io/docs/reference/koin-core/context-isolation).
+    private fun door(): Door? {
+        // System.nanoTime is monotonic and not paused by Robolectric's clock, as SystemClock is.
+        val end = System.nanoTime() + startWaitMs * 1_000_000
+        while (true) {
+            GlobalContext.getOrNull()?.let { return it.get<Door>() }
+            if (System.nanoTime() >= end) return null
+            Thread.sleep(POLL_MS)
+        }
     }
 
     // Not a table: nothing can be read back through it.
@@ -32,6 +46,10 @@ class DoorProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
     companion object {
+        /** How long a call waits for the application's start-up; a test shortens it. */
+        internal var startWaitMs = 10_000L
+        private const val POLL_MS = 25L
+
         /** Debug builds only: the lines of the door in logcat (no package of the user's, only ours). */
         const val TAG = "StoreDoor"
 
