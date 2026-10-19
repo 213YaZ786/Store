@@ -148,8 +148,10 @@ jobs:
       # picks by the phone's ABIs), so a store reaches every file through
       # releases/latest/download/ without GitHub's API and its 60 requests
       # an hour. jq builds the JSON, so every text is escaped.
-      # icon.png is images/icon.png of en-US when the repo has it. SHA256SUMS.txt
-      # above stays over the APKs only.
+      # icon.png is images/icon.png of en-US when the repo has it, else the
+      # launcher icon drawn by the unit tests (app/build/outputs/icon/icon.png,
+      # for an app taking the iconexport kit). SHA256SUMS.txt above stays over
+      # the APKs only.
       - name: Write app.json and the icon
         run: |
           AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n 1)aapt2"
@@ -187,9 +189,14 @@ jobs:
             '{package: $package, versionCode: $versionCode, versionName: $versionName, label: $label, minSdk: $minSdk, description: $description, apks: [$apk]}' \
             > release/app.json
           cat release/app.json
+          # The fastlane icon wins; without one, the launcher icon drawn at 512 px
+          # by the unit tests above (IconExportTest, the iconexport kit).
           if [ -f fastlane/metadata/android/en-US/images/icon.png ]
           then
             cp fastlane/metadata/android/en-US/images/icon.png release/icon.png
+          elif [ -f app/build/outputs/icon/icon.png ]
+          then
+            cp app/build/outputs/icon/icon.png release/icon.png
           fi
 
       # The app declares a handful of permissions and depends on libraries
