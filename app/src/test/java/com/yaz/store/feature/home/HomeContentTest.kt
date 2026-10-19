@@ -40,7 +40,7 @@ class HomeContentTest {
     val compose = createComposeRule()
 
     @Test
-    fun `a card shows the name, the description, the version and the button of its state`() {
+    fun `a row shows the name, the words, the version and the button of its state`() {
         val state = HomeState(loaded = true, apps = listOf(dialer, files, Fixtures.mtga, Fixtures.keyboard, Fixtures.voice, Fixtures.sms2))
         compose.setContent { HomeContent(state, onRetry = {}) }
         compose.onNodeWithText("Dialer").assertIsDisplayed()
@@ -55,7 +55,7 @@ class HomeContentTest {
     }
 
     @Test
-    fun `the buttons act on their app, a tap on the card opens its page`() {
+    fun `the buttons act on their app, a tap on the row opens its page`() {
         val installed = mutableListOf<String>()
         val opened = mutableListOf<String>()
         val pages = mutableListOf<String>()
@@ -102,7 +102,7 @@ class HomeContentTest {
         assertEquals(1, all)
         compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").assertIsDisplayed()
         compose.onNodeWithText("Android will ask once").assertIsDisplayed()
-        // The row's own Update (the card below has one too).
+        // The row's own Update (the list row below has one too).
         compose.onAllNodesWithTextCount("Update", 2)
         assertEquals(emptyList<String>(), updated)
     }
@@ -217,7 +217,7 @@ class HomeContentTest {
         assertEquals(AppState.UPDATE, calculator.state)
     }
 
-    // The nodes carrying [text], counted: a card and a row can both carry the same word.
+    // The nodes carrying [text], counted: an updates row and a list row can both carry the same word.
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextCount(text: String, atLeast: Int) {
         val found = onAllNodesWithText(text, substring = false).fetchSemanticsNodes().size
         assertEquals("nodes with \"$text\": $found", true, found >= atLeast)

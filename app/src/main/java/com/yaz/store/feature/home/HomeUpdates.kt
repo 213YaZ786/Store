@@ -64,9 +64,14 @@ internal fun UpdatesZone(
     val waiting = updates.count { u -> jobs.none { it.entry.packageName == u.entry.packageName && it.step.active } }
     val total = HomeModel.totalSize(updates, details)
     ZoneSurface(shape = RoundedCornerShape(24.dp), modifier = modifier.fillMaxWidth().entrancePop(seen, "updates")) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(R.string.updates_title), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                stringResource(R.string.updates_title),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 14.dp)
+            )
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (waiting > 0) {
                     BoldButton(onClick = onUpdateAll, modifier = Modifier.weight(1f), filled = true) {
                         Text(
@@ -77,7 +82,12 @@ internal fun UpdatesZone(
                 }
                 if (running) QuietButton(onClick = onCancelAll, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.cancel_all)) }
             }
-            updates.forEach { UpdateRow(it, HomeModel.jobOf(it, jobs), details[it.entry.detailsKey], HomeModel.sizeOf(it, details), actions) }
+            Column {
+                updates.forEachIndexed { index, status ->
+                    if (index > 0) RowDivider()
+                    UpdateRow(status, HomeModel.jobOf(status, jobs), details[status.entry.detailsKey], HomeModel.sizeOf(status, details), actions)
+                }
+            }
         }
     }
 }
@@ -90,32 +100,13 @@ private fun UpdateRow(status: AppStatus, job: InstallJob?, details: ReleaseDetai
     } else {
         stringResource(R.string.versions_move, status.installed?.versionName ?: "", status.entry.versionName)
     }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            Modifier.fillMaxWidth().sinkClickable(status.entry.label, depth = 0.98f) { actions.onPage(status) },
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AppIcon(status, 40.dp)
-            Column(Modifier.weight(1f)) {
-                Text(status.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(moves, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            if (job == null || !job.step.active) {
-                BoldButton(onClick = { actions.onPrimary(status) }) { Text(stringResource(R.string.action_update)) }
-            }
-        }
-        if (job != null && job.step.active) {
-            Progress(job)
-            QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
-        } else if (job != null && job.step == com.yaz.store.data.install.JobStep.FAILED) {
-            Text(jobText(context, job), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        }
+    val notes = details?.notes?.takeIf { it.isNotEmpty() }
+    AppRow(status, job, actions, subtitle = moves, version = null, below = if (!status.handOver && notes == null) null else ({
         if (status.handOver) {
             Text(stringResource(R.string.hand_over_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        details?.notes?.takeIf { it.isNotEmpty() }?.let { Notes(status.entry.packageName, it) }
-    }
+        notes?.let { Notes(status.entry.packageName, it) }
+    }))
 }
 
 /** The notes of a release cut to three lines with "More" opening them where they stand; plain text, nothing in it opens. */
