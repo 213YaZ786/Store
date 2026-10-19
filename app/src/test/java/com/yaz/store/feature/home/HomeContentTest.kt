@@ -80,8 +80,8 @@ class HomeContentTest {
         compose.onNodeWithText("Installed").assertIsDisplayed()
         compose.onNodeWithText("Available").assertIsDisplayed()
         assertEquals(0, compose.onAllNodesWithText("YAZ", substring = true).fetchSemanticsNodes().size)
-        // "More" only on the rows of the Updates zone.
-        assertEquals(HomeModel.updates(state.apps).size, compose.onAllNodesWithText("More", substring = false).fetchSemanticsNodes().size)
+        // No "More" link: a row itself opens the app's page.
+        assertEquals(0, compose.onAllNodesWithText("More", substring = false).fetchSemanticsNodes().size)
         val installed = HomeModel.sorted(HomeModel.installed(state.apps))
         assertEquals(listOf("Calculator", "Contacts", "Dialer", "MTGA", "Mushaf", "SMS"), installed.map { it.entry.label })
         val available = HomeModel.sorted(HomeModel.available(state.apps))
@@ -111,8 +111,8 @@ class HomeContentTest {
         // The row's own Update (the list row below has one too).
         compose.onAllNodesWithTextCount("Update", 2)
         assertEquals(emptyList<String>(), updated)
-        // "More" opens the app's page; so does the row.
-        compose.onNodeWithText("More").performClick()
+        // The row opens the app's page.
+        compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").performClick()
         assertEquals(listOf("Calculator"), pages)
     }
 

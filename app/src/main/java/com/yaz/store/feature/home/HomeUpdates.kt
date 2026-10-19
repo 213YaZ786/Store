@@ -99,8 +99,8 @@ private fun UpdateRow(status: AppStatus, job: InstallJob?, size: Long?, actions:
     } else {
         stringResource(R.string.versions_move, status.installed?.versionName ?: "", status.entry.versionName)
     }
-    // One line: icon, name, the versions and size, then "More" (the app's page) just before Update.
-    AppRow(status, job, actions, subtitle = moves, version = null, beforeButton = { MoreLink(status.entry.label) { actions.onPage(status) } })
+    // One line: icon, name, the versions and size, then Update; the row itself opens the app's page.
+    AppRow(status, job, actions, subtitle = moves, version = null)
 }
 
 /**

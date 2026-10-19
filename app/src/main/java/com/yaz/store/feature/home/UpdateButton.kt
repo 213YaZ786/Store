@@ -102,18 +102,6 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
     }
 }
 
-/** The small "More" before an update's button: opens the app's page; a transparent tap target, not a second pane of glass. */
-@Composable
-internal fun MoreLink(appName: String, onClick: () -> Unit) {
-    Text(
-        stringResource(R.string.more),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        maxLines = 1,
-        modifier = Modifier.sinkClickable(appName, depth = 0.92f, onClick = onClick).padding(start = 0.dp, end = 8.dp, top = 14.dp, bottom = 14.dp)
-    )
-}
-
 /** Dialer's rememberTinted without the remember: the same glass as [look], tinted with [tint] instead of the zone's own fill. */
 private fun tintedLook(look: GlassLook, tint: Color) =
     GlassLook(look.dark, look.ground, look.halos, zoneTint = tint, floatTint = tint, accentTint = look.accentTint)

@@ -8,7 +8,6 @@
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
     <string name="cancel_all">Cancel all</string>
-    <string name="more">More</string>
     <string name="updates_title">Updates</string>
     <string name="update_all">Update all</string>
     <string name="update_all_size">Update all · %1$s</string>
