@@ -88,6 +88,10 @@ sealed interface CatalogError {
     data object Refused : CatalogError
 }
 
+// A repo as GitHub's list repositories for a user gives it, name and description (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user).
+/** A repo of the account and its description on GitHub ("" when it has none). */
+data class RepoInfo(val name: String, val description: String)
+
 /** The apps found, and what went wrong on the way, if anything. [listCached]: the repos come from the last opening's list. */
 data class CatalogResult(val entries: List<StoreEntry>, val error: CatalogError?, val listCached: Boolean = false)
 
@@ -114,7 +118,14 @@ private data class AppJsonDto(
 )
 
 @Serializable
-private data class RepoDto(val name: String, val archived: Boolean = false, val fork: Boolean = false, val owner: OwnerDto? = null)
+private data class RepoDto(
+    val name: String,
+    val archived: Boolean = false,
+    val fork: Boolean = false,
+    val owner: OwnerDto? = null,
+    /** The repo's "About" text; null when empty on GitHub. */
+    val description: String? = null
+)
 
 @Serializable
 private data class OwnerDto(val login: String = "")
@@ -261,7 +272,14 @@ object CatalogRules {
         return out.toString().trim()
     }
 
-    internal fun parseRepos(text: String): List<String>? {
+    internal fun parseRepos(text: String): List<String>? = parseRepoList(text)?.map { it.name }
+
+    /**
+     * The same repos with their GitHub description (the "description" field of GitHub's list repositories for a user, plain text,
+     * https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user), one line cut to [MAX_DESCRIPTION] characters with control and
+     * bidirectional characters removed as app.json's is (ApkInfoCodec.clean); empty when GitHub has none. Nothing is made up.
+     */
+    internal fun parseRepoList(text: String): List<RepoInfo>? {
         val repos = try {
             json.decodeFromString<List<RepoDto>>(text)
         } catch (e: SerializationException) {
@@ -271,7 +289,7 @@ object CatalogRules {
         }
         return repos.filter {
             !it.archived && !it.fork && ReleaseNet.validRepo(it.name) && it.owner?.login.equals(ReleaseNet.OWNER, ignoreCase = true)
-        }.map { it.name }
+        }.map { RepoInfo(it.name, ApkInfoCodec.clean(it.description.orEmpty(), MAX_DESCRIPTION)) }
     }
 
     /** The notes, date and file sizes of the release answered for [tag] (GitHub's get a release by tag name), or null when it is not that release. */
@@ -374,12 +392,12 @@ class Catalog(
             listError = e
             kept
         }
-        val repos = CatalogRules.parseRepos(text) ?: return@withContext CatalogResult(emptyList(), CatalogError.Refused, listError != null)
+        val repos = CatalogRules.parseRepoList(text) ?: return@withContext CatalogResult(emptyList(), CatalogError.Refused, listError != null)
         val tags = locales()
         val phoneAbis = abis()
         val gate = Semaphore(MAX_AT_ONCE)
         val outcomes = coroutineScope {
-            repos.map { repo -> async { gate.withPermit { entryOf(repo, tags, phoneAbis) } } }.awaitAll()
+            repos.map { repo -> async { gate.withPermit { entryOf(repo.name, repo.description, tags, phoneAbis) } } }.awaitAll()
         }
         val entries = outcomes.filterIsInstance<Outcome.Found>().map { it.entry }
             .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
@@ -416,14 +434,14 @@ class Catalog(
     // One repo: the tag of its latest release from the first hop of latest/download/app.json, then app.json of that tag, the APK for this phone
     // among the ones it lists, and icon.png when the release has one. A 404 on app.json is a release made before app.json existed: its APKs are
     // named by SHA256SUMS.txt and read by ranges (fromApk). An app.json that does not pass the rules is no app of ours.
-    private suspend fun entryOf(repo: String, tags: List<String>, phoneAbis: List<String>): Outcome {
+    private suspend fun entryOf(repo: String, about: String, tags: List<String>, phoneAbis: List<String>): Outcome {
         try {
             val tag = source.latestTag(repo)
             val text = try {
                 source.getJson(ReleaseNet.downloadUrl(repo, tag, "app.json"))
             } catch (e: NetError) {
                 if (e.kind != NetError.Kind.NOT_FOUND) throw e
-                return fromApk(repo, tag, phoneAbis)
+                return fromApk(repo, tag, about, phoneAbis)
             }
             val app = CatalogRules.parseAppJson(text) ?: return Outcome.Skipped
             val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png")
@@ -433,7 +451,8 @@ class Catalog(
                     tag = tag,
                     packageName = app.packageName,
                     label = app.label,
-                    description = CatalogRules.pickDescription(app.descriptions, tags),
+                    // app.json's description wins; with none for the phone's languages, the repo's own on GitHub; else none.
+                    description = CatalogRules.pickDescription(app.descriptions, tags).ifEmpty { about },
                     versionCode = app.versionCode,
                     versionName = app.versionName,
                     minSdk = app.minSdk,
@@ -451,7 +470,8 @@ class Catalog(
     // (komi-store's asset choice, https://github.com/komi-store/komi-store, AssetArchitectureMatcher.kt, through AbiChoice), and what that APK
     // says read by ranges (https://www.rfc-editor.org/rfc/rfc9110#section-14, data/sparse). An APK that cannot be read is the repo by its name with
     // Install, as komi-store lists a repo by its name (https://github.com/komi-store/komi-store); the full install path checks the file.
-    private suspend fun fromApk(repo: String, tag: String, phoneAbis: List<String>): Outcome {
+    // Its description is the repo's own on GitHub, already in the repo list ([about], "" when GitHub has none: no line then).
+    private suspend fun fromApk(repo: String, tag: String, about: String, phoneAbis: List<String>): Outcome {
         val sums = try {
             source.getJson(ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt"))
         } catch (e: NetError) {
@@ -465,13 +485,13 @@ class Catalog(
         val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png").takeIf { source.exists(it) }
         val entry = if (info != null) {
             StoreEntry(
-                repo = repo, tag = tag, packageName = info.packageName, label = info.label ?: repo, description = "",
+                repo = repo, tag = tag, packageName = info.packageName, label = info.label ?: repo, description = about,
                 versionCode = info.versionCode, versionName = info.versionName.ifEmpty { tag.removePrefix("v") }, minSdk = info.minSdk,
                 apkName = chosen, iconUrl = icon, sparse = true
             )
         } else {
             StoreEntry(
-                repo = repo, tag = tag, packageName = CatalogRules.placeholderPackage(repo), label = repo, description = "",
+                repo = repo, tag = tag, packageName = CatalogRules.placeholderPackage(repo), label = repo, description = about,
                 versionCode = 0, versionName = tag.removePrefix("v"), minSdk = 1,
                 apkName = chosen, iconUrl = icon, unread = true, sparse = true
             )

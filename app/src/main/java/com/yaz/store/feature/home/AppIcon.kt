@@ -5,18 +5,17 @@ package com.yaz.store.feature.home
 //   https://developer.android.com/reference/android/content/pm/PackageManager#getApplicationIcon(java.lang.String)), only when its signer is
 //   checked as ours (OurKeys), drawn to a bitmap with androidx.core's Drawable.toBitmap;
 // - an app not installed: icon.png of its release, decoded only by the isolated DecoderService (core/security/SafeImages, the safemedia kit),
-//   never BitmapFactory;
+//   never BitmapFactory. The APK's own icon cannot be drawn from the few ranges read of it: an isolated process may not reopen the file it is
+//   given as a path (EACCES on /proc/self/fd/N, measured 2026-10-19), so PackageManager.getPackageArchiveInfo answers null, and
+//   ResourcesProvider.loadFromApk does not make another package's resources addressable (its ids stay 0), so there is no loadIcon there;
 // - else Material Symbols' grid icon (ui/icon/AppIcons.Apps).
+// Every one of them is shown in the round pane of glass of the shared GlassIcon.
 // The loaded bitmaps wait in an android.util.LruCache (https://developer.android.com/reference/android/util/LruCache), as the Android
 // image-loading guide has it (https://developer.android.com/topic/performance/graphics/cache-bitmap), and are loaded off the main thread
 // from produceState (https://developer.android.com/develop/ui/compose/side-effects#producestate).
 import android.content.Context
 import android.util.LruCache
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -24,12 +23,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -37,6 +33,7 @@ import com.yaz.store.core.security.SafeImages
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.trust.OurKeys
+import com.yaz.store.ui.component.GlassIcon
 import com.yaz.store.ui.icon.AppIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -78,21 +75,18 @@ class PhoneIcons(private val context: Context, private val releases: IconStore) 
     }
 }
 
-/** The icon of [status], [size] wide, rounded; the grid icon until it loads or when it has none. */
+/**
+ * The icon of [status], [size] wide, in a round pane of glass (the shared GlassIcon, after the phone kit's ContactAvatar); the grid icon in
+ * the same pane until it loads or when it has none.
+ */
 @Composable
 fun AppIcon(status: AppStatus, size: Dp, modifier: Modifier = Modifier) {
     val source = LocalIconSource.current
     val picture by produceState<ImageBitmap?>(null, status.entry.packageName, status.entry.tag, status.installed?.versionCode, source) {
         value = source.load(status)
     }
-    val shape = RoundedCornerShape(size * 0.24f)
-    val shown = picture
-    if (shown != null) {
-        Image(shown, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.size(size).clip(shape))
-    } else {
-        Box(modifier.size(size).clip(shape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-            Icon(AppIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(size * 0.5f))
-        }
+    GlassIcon(picture, size, modifier) {
+        Icon(AppIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(size * 0.5f))
     }
 }
 

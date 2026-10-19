@@ -46,7 +46,12 @@ class ApkInspectorService : Service() {
     /** Inspects [input] and writes the answer to [output]; on any failure the pipe closes with nothing in it. */
     private fun answer(input: ParcelFileDescriptor, output: ParcelFileDescriptor) {
         try {
-            val info = ParcelFileDescriptor.AutoCloseInputStream(input).use { ApkInspect.inspect(it.channel) }
+            // One inspection at a time: ARSCLib 1.3.5 keeps static CharsetDecoders (StringItem), and two
+            // resource tables decoded at once aborted the process (seen on the 9a, 2026-10-19); Kotlin's
+            // synchronized, https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/synchronized.html.
+            val info = synchronized(LOCK) {
+                ParcelFileDescriptor.AutoCloseInputStream(input).use { ApkInspect.inspect(it.channel) }
+            }
             ParcelFileDescriptor.AutoCloseOutputStream(output).buffered().use { ApkInfoCodec.write(info, it) }
         } catch (e: Exception) {
             runCatching { output.close() }
@@ -56,5 +61,6 @@ class ApkInspectorService : Service() {
     companion object {
         internal const val DESCRIPTOR = "com.yaz.store.core.apk.Inspector"
         internal const val INSPECT = IBinder.FIRST_CALL_TRANSACTION
+        private val LOCK = Any()
     }
 }

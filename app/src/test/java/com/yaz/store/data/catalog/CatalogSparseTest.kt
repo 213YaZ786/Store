@@ -93,6 +93,29 @@ class CatalogSparseTest {
         assertEquals(listOf("Dialer/v1.0.0/Dialer-0.14.21.apk"), probe.asked)
     }
 
+    // Canned answers in the shape of GitHub's list repositories for a user, "description" a string or absent
+    // (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user).
+    @Test
+    fun `a release with no app json shows the repo's GitHub description, app json's wins when present, none is made up`() {
+        val about = "Phone calls, history and speed dial"
+        val dialer = """{"name":"Dialer","owner":{"login":"213YaZ786"},"description":"$about"}"""
+        val bare = """{"name":"Bare","owner":{"login":"213YaZ786"}}"""
+        val calculator = """{"name":"Calculator","owner":{"login":"213YaZ786"},"description":"GitHub text"}"""
+        val fake = Fake(
+            mapOf(
+                ReleaseNet.repoListUrl() to "[$dialer,$bare,$calculator]",
+                url("Dialer", "SHA256SUMS.txt") to sums("Dialer-1.apk"),
+                url("Bare", "SHA256SUMS.txt") to sums("Bare-1.apk"),
+                url("Calculator", "app.json") to appJson
+            ),
+            mapOf("Dialer" to "v1.0.0", "Bare" to "v1.0.0", "Calculator" to "v1.0.0")
+        )
+        val entries = load(fake, Probed()).entries.associateBy { it.repo }
+        assertEquals(about, entries.getValue("Dialer").description)
+        assertEquals("", entries.getValue("Bare").description)
+        assertEquals("Installe et met à jour les apps 213YaZ786 depuis leurs releases", entries.getValue("Calculator").description)
+    }
+
     @Test
     fun `the apk names come from the sums with or without the dot slash, never the debug ones`() {
         val text = listOf(

@@ -272,4 +272,23 @@ class CatalogRulesTest {
         assertNull(CatalogRules.parseRepos("<html>"))
         assertEquals(emptyList<String>(), CatalogRules.parseRepos("[]"))
     }
+
+    // The shapes of GitHub's list repositories for a user: "description" is a string or null (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user).
+    @Test
+    fun `a repo's description is one clean line of at most 300 characters, empty when GitHub has none`() {
+        val long = "x".repeat(400)
+        val text = """[
+          {"name":"A","owner":{"login":"213YaZ786"},"description":"Phone calls\u0007 and ‮history"},
+          {"name":"B","owner":{"login":"213YaZ786"},"description":null},
+          {"name":"C","owner":{"login":"213YaZ786"}},
+          {"name":"D","owner":{"login":"213YaZ786"},"description":"   "},
+          {"name":"E","owner":{"login":"213YaZ786"},"description":"$long"}
+        ]"""
+        val repos = CatalogRules.parseRepoList(text)!!.associate { it.name to it.description }
+        assertEquals("Phone calls and history", repos["A"])
+        assertEquals("", repos["B"])
+        assertEquals("", repos["C"])
+        assertEquals("", repos["D"])
+        assertEquals(300, repos["E"]!!.length)
+    }
 }
