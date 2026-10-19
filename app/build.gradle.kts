@@ -126,7 +126,7 @@ dependencies {
     implementation("com.android.tools.build:apksig:9.4.1")
     // ARSCLib (REAndroid, Apache 2.0, Maven Central): reads resources.arsc to get an app's label.
     // Also only inside the isolated ApkInspectorService.
-    implementation("io.github.reandroid:ARSCLib:1.3.5")
+    implementation("io.github.reandroid:ARSCLib:1.4.0")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
