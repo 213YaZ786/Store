@@ -1,3 +1,121 @@
 <resources>
     <string name="app_name">Store</string>
+
+    <!-- Home -->
+    <string name="home_title">Store</string>
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="cancel_all">Cancel all</string>
+    <string name="more">More</string>
+    <string name="less">Less</string>
+    <string name="updates_title">Updates</string>
+    <string name="update_all">Update all</string>
+    <string name="update_all_size">Update all · %1$s</string>
+    <string name="installed_title">Installed</string>
+    <string name="available_title">Available</string>
+    <string name="group_yaz">YAZ</string>
+    <string name="group_more">More</string>
+    <string name="up_to_date">Up to date</string>
+    <string name="versions_move">%1$s → %2$s</string>
+    <string name="versions_move_size">%1$s → %2$s · %3$s</string>
+    <string name="hand_over_note">Android will ask once</string>
+    <string name="empty_title">Store</string>
+    <string name="empty_none">No app to list yet.</string>
+
+    <!-- The button of each state -->
+    <string name="action_open">Open</string>
+    <string name="action_install">Install</string>
+    <string name="action_update">Update</string>
+    <string name="action_hand_over">Hand over</string>
+    <string name="action_uninstall">Uninstall</string>
+    <string name="reason_foreign">Signed by someone else</string>
+    <string name="reason_too_new">Needs Android %1$s</string>
+    <string name="reason_no_apk">No build for this phone</string>
+
+    <!-- What the list says when it could not be read -->
+    <string name="error_offline">No connection</string>
+    <string name="error_limit">GitHub\'s limit is reached</string>
+    <string name="error_refused">GitHub\'s answer was refused</string>
+    <string name="error_limit_at">Try again at %1$s.</string>
+    <string name="error_limit_later">Try again later.</string>
+    <string name="error_kept">Showing the list from the last visit.</string>
+
+    <!-- What an entry of the queue is doing -->
+    <string name="job_waiting">Waiting</string>
+    <string name="job_downloading">Downloading %1$d%%</string>
+    <string name="job_checking">Checking</string>
+    <string name="job_installing">Installing</string>
+    <string name="job_confirm">Waiting for your confirmation</string>
+    <string name="job_done">Installed</string>
+    <string name="job_failed">Failed: %1$s</string>
+    <string name="job_failed_default">The installation could not be done.</string>
+
+    <!-- App page -->
+    <string name="page_package">Package</string>
+    <string name="page_description">About</string>
+    <string name="page_installed">Installed version</string>
+    <string name="page_offered">Latest version</string>
+    <string name="page_size">Download size</string>
+    <string name="page_released">Released</string>
+    <string name="page_installer">Installer</string>
+    <string name="page_notes">What\'s new</string>
+    <string name="page_not_installed">Not installed</string>
+    <string name="page_source">Source</string>
+    <string name="installer_store">Store manages updates</string>
+    <string name="installer_hand_over">Not managed by Store. Hand over to let Store update it.</string>
+    <string name="installer_foreign">Signed by someone else, left alone</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">Same as the system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_pure_black">Pure black</string>
+    <string name="settings_pure_black_summary">Black background in dark mode.</string>
+    <string name="settings_glass">Glass effects</string>
+    <string name="settings_glass_summary">Panes in liquid glass.</string>
+    <string name="settings_text_size">Text size</string>
+    <string name="settings_text_size_summary">%1$s, on top of Android\'s font size</string>
+    <string name="settings_updates">Updates</string>
+    <string name="settings_background">Check in the background</string>
+    <string name="settings_background_summary">Once a day on Wi-Fi, with a notification when updates wait.</string>
+    <string name="settings_wifi_only">Only on Wi-Fi</string>
+    <string name="settings_wifi_only_summary">Downloads wait for an unmetered network.</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Store %1$s</string>
+    <string name="settings_source_code">Source code</string>
+    <string name="settings_source_code_summary">github.com/213YaZ786/Store, GPL-3.0</string>
+    <string name="settings_credit_grapheneos">GrapheneOS App Store</string>
+    <string name="settings_credit_grapheneos_summary">Installer and update checks, MIT</string>
+    <string name="settings_credit_komi">komi-store</string>
+    <string name="settings_credit_komi_summary">GitHub releases client, Apache-2.0</string>
+    <string name="settings_credit_manager">App Manager</string>
+    <string name="settings_credit_manager_summary">Installer, GPL-3.0</string>
+
+    <!-- Setup guide -->
+    <string name="setup_title">Welcome to Store</string>
+    <string name="setup_installs">Install apps</string>
+    <string name="setup_installs_allow">Allow installs</string>
+    <string name="setup_notifications">Notifications</string>
+    <string name="setup_notifications_allow">Allow notifications</string>
+    <string name="setup_hand_over">Let Store update your apps</string>
+    <string name="setup_hand_over_none">Nothing to hand over</string>
+    <string name="setup_loading">Looking at your apps</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_skip">Skip</string>
+    <string name="setup_start">Start</string>
+    <string name="done">Done</string>
+
+    <!-- Notifications -->
+    <string name="channel_updates">Updates waiting</string>
+    <plurals name="notice_updates">
+        <item quantity="one">%1$d update</item>
+        <item quantity="other">%1$d updates</item>
+    </plurals>
+
+    <!-- Easter egg -->
+    <string name="egg_label">Store is open</string>
 </resources>

@@ -12,6 +12,7 @@ import com.yaz.store.core.install.InstallRequest
 import com.yaz.store.core.install.InstallState
 import com.yaz.store.core.install.Installer
 import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.net.NetError
 import com.yaz.store.data.net.ReleaseNet
 import java.io.File
 import kotlinx.coroutines.coroutineScope
@@ -22,15 +23,27 @@ class StoreBackend(
     private val context: android.content.Context,
     private val net: ReleaseNet,
     private val inspector: ApkInspector,
-    private val installer: Installer
+    private val installer: Installer,
+    /** Settings' "Only on Wi-Fi", read at each download. */
+    private val wifiOnly: () -> Boolean = { false }
 ) : InstallBackend {
 
     override val sdk: Int get() = Build.VERSION.SDK_INT
 
     override fun sums(repo: String, tag: String): String = net.getJson(ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt"))
 
-    override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) =
+    // Only on Wi-Fi: the active network without NET_CAPABILITY_NOT_METERED stops the download before any request
+    // (ConnectivityManager and NetworkCapabilities, https://developer.android.com/training/basics/network-ops/managing).
+    private fun metered(): Boolean {
+        val manager = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        return !capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
+    override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) {
+        if (wifiOnly() && metered()) throw NetError(NetError.Kind.METERED, message = "metered")
         net.download(ReleaseNet.downloadUrl(repo, tag, apkName), into, onProgress, beforeRead)
+    }
 
     override suspend fun inspect(file: File): ApkInfo? = inspector.inspect(listOf(file)).single()
 

@@ -1,0 +1,13 @@
+# The setup guide at the first start (cleared data), seeded by run-home.sh: its three steps, skipped, then Home.
+# Commands from https://docs.maestro.dev/reference/commands-available.
+appId: com.yaz.store.debug
+---
+- launchApp:
+    stopApp: true
+- assertVisible: "Welcome to Store"
+- assertVisible: "Install apps"
+- assertVisible: "Notifications"
+- assertVisible: "Let Store update your apps"
+- tapOn: "Start"
+- assertNotVisible: "Welcome to Store"
+- assertVisible: "Settings"

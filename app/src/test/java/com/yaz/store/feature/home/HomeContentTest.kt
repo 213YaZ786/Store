@@ -8,17 +8,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.test.core.app.ApplicationProvider
 import com.yaz.store.data.catalog.AppState
-import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.CatalogError
-import com.yaz.store.data.catalog.InstalledFacts
-import com.yaz.store.data.catalog.ReleaseDetails
-import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
+import com.yaz.store.feature.home.Fixtures.calculator
+import com.yaz.store.feature.home.Fixtures.dialer
+import com.yaz.store.feature.home.Fixtures.files
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -28,41 +32,114 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 // The plain Application: the app's own starts Koin, which a second test would start again.
-// A phone-sized screen tall enough for the three cards.
-@Config(sdk = [36], application = android.app.Application::class, qualifiers = "w411dp-h1200dp-xxhdpi")
+// A phone-sized screen tall enough for the cards.
+@Config(sdk = [36], application = android.app.Application::class, qualifiers = "w411dp-h2400dp-xxhdpi")
 class HomeContentTest {
 
     @get:Rule
     val compose = createComposeRule()
 
-    private fun status(repo: String, label: String, state: AppState, installed: String?, offered: String, handOver: Boolean = false) = AppStatus(
-        StoreEntry(
-            repo = repo, tag = "v$offered", packageName = "com.yaz.$repo", label = label, description = "", versionCode = 2, versionName = offered,
-            minSdk = 31, apkName = "$repo.apk", iconUrl = null
-        ),
-        state,
-        installed?.let { InstalledFacts(1, it, emptySet(), null, null) },
-        handOver
-    )
+    @Test
+    fun `a card shows the name, the description, the version and the button of its state`() {
+        val state = HomeState(loaded = true, apps = listOf(dialer, files, Fixtures.mtga, Fixtures.keyboard, Fixtures.voice, Fixtures.sms2))
+        compose.setContent { HomeContent(state, onRetry = {}) }
+        compose.onNodeWithText("Dialer").assertIsDisplayed()
+        compose.onNodeWithText("Phone calls, history and speed dial").assertIsDisplayed()
+        compose.onNodeWithText("0.14.20").assertIsDisplayed()
+        compose.onNodeWithText("Open").assertIsDisplayed()
+        compose.onNodeWithText("Install").assertIsDisplayed()
+        compose.onNodeWithText("Hand over").assertIsDisplayed()
+        compose.onNodeWithText("Signed by someone else").assertIsNotEnabled()
+        compose.onNodeWithText("Needs Android 17").assertIsNotEnabled()
+        compose.onNodeWithText("No build for this phone").assertIsNotEnabled()
+    }
 
     @Test
-    fun `each app shows its label, package, state and both versions`() {
-        val state = HomeState(
-            loaded = true,
-            apps = listOf(
-                status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6"),
-                status("dialer", "Dialer", AppState.NOT_INSTALLED, null, "0.14.20"),
-                status("mtga", "MTGA", AppState.FOREIGN, "2.15.15", "2.15.15")
+    fun `the buttons act on their app, a tap on the card opens its page`() {
+        val installed = mutableListOf<String>()
+        val opened = mutableListOf<String>()
+        val pages = mutableListOf<String>()
+        compose.setContent {
+            HomeContent(
+                HomeState(loaded = true, apps = listOf(dialer, files)), onRetry = {},
+                onInstall = { installed += it.entry.repo }, onOpen = { opened += it.entry.repo }, onPage = { pages += it.entry.repo }
             )
-        )
+        }
+        compose.onNodeWithText("Install").performClick()
+        compose.onNodeWithText("Open").performClick()
+        compose.onNodeWithText("Files").performClick()
+        assertEquals(listOf("Files"), installed)
+        assertEquals(listOf("Dialer"), opened)
+        assertEquals(listOf("Files"), pages)
+    }
+
+    @Test
+    fun `installed apps and available apps are two lists, YAZ apps first under their heading`() {
+        val state = HomeState(loaded = true, apps = Fixtures.everything)
         compose.setContent { HomeContent(state, onRetry = {}) }
-        compose.onNodeWithText("Calculator").assertIsDisplayed()
-        compose.onNodeWithText("com.yaz.calculator").assertIsDisplayed()
-        compose.onNodeWithText("Update available").assertIsDisplayed()
-        compose.onNodeWithText("Installed 0.3.5, offered 0.3.6").assertIsDisplayed()
-        compose.onNodeWithText("Not installed").assertIsDisplayed()
-        compose.onNodeWithText("Installed -, offered 0.14.20").assertIsDisplayed()
-        compose.onNodeWithText("Signed by another key, left alone").assertIsDisplayed()
+        compose.onNodeWithText("Installed").assertIsDisplayed()
+        compose.onNodeWithText("Available").assertIsDisplayed()
+        // The groups, in each list.
+        val installed = HomeModel.groups(HomeModel.installed(state.apps))
+        assertEquals(listOf("Calculator", "Contacts", "Dialer", "SMS"), installed[0].apps.map { it.entry.label })
+        assertEquals(listOf("MTGA", "Mushaf"), installed[1].apps.map { it.entry.label })
+        val available = HomeModel.groups(HomeModel.available(state.apps))
+        assertEquals(listOf("Files", "Keyboard", "Voice"), available[0].apps.map { it.entry.label })
+        assertEquals(1, available.size)
+    }
+
+    @Test
+    fun `the updates zone has update all with the total size, one row per app with its versions and notes`() {
+        var all = 0
+        val updated = mutableListOf<String>()
+        compose.setContent {
+            HomeContent(
+                HomeState(loaded = true, apps = listOf(calculator, dialer), details = Fixtures.details), onRetry = {},
+                onInstall = { updated += it.entry.repo }, onUpdateAll = { all++ }
+            )
+        }
+        compose.onNodeWithText("Updates").assertIsDisplayed()
+        compose.onNodeWithText("Update all · 4.2 MB").performClick()
+        assertEquals(1, all)
+        compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").assertIsDisplayed()
+        compose.onNodeWithText("Android will ask once").assertIsDisplayed()
+        // The row's own Update (the card below has one too).
+        compose.onAllNodesWithTextCount("Update", 2)
+        assertEquals(emptyList<String>(), updated)
+    }
+
+    @Test
+    fun `the notes are cut to three lines and More opens them in place`() {
+        compose.setContent { HomeContent(HomeState(loaded = true, apps = listOf(calculator), details = Fixtures.details), onRetry = {}) }
+        compose.onNodeWithText("More").assertIsDisplayed()
+        compose.onNodeWithText("More").performClick()
+        compose.onNodeWithText("Less").assertIsDisplayed()
+        compose.onNodeWithText("Less").performClick()
+        compose.onNodeWithText("More").assertIsDisplayed()
+    }
+
+    @Test
+    fun `with no update the state says Up to date, and seven taps play the egg`() {
+        compose.setContent { HomeContent(HomeState(loaded = true, apps = Fixtures.current), onRetry = {}) }
+        compose.onNodeWithText("Up to date").assertIsDisplayed()
+        repeat(6) { compose.onNodeWithText("Up to date").performClick() }
+        compose.onNodeWithContentDescription("Store is open").assertDoesNotExist()
+        // The clock is held, or the egg would play to its end before it is looked for (Compose testing: mainClock.autoAdvance).
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("Up to date").performClick()
+        compose.mainClock.advanceTimeBy(300)
+        compose.onNodeWithContentDescription("Store is open").assertExists()
+        // It leaves by itself.
+        compose.mainClock.advanceTimeBy(4000)
+        compose.onNodeWithContentDescription("Store is open").assertDoesNotExist()
+    }
+
+    @Test
+    fun `an update or a hand over means the app is not up to date`() {
+        assertEquals(true, HomeModel.allCurrent(Fixtures.current))
+        assertEquals(false, HomeModel.allCurrent(Fixtures.current + calculator))
+        assertEquals(false, HomeModel.allCurrent(Fixtures.current + Fixtures.sms2))
+        assertEquals(false, HomeModel.allCurrent(listOf(files)))
     }
 
     @Test
@@ -71,85 +148,58 @@ class HomeContentTest {
         var retried = 0
         compose.setContent { HomeContent(state, onRetry = { retried++ }) }
         compose.onNodeWithText("No app to list yet.").assertIsDisplayed()
-        state = HomeState(loaded = true, error = CatalogError.Offline)
-        compose.onNodeWithText("No connection.").assertIsDisplayed()
         compose.onNodeWithText("Retry").performClick()
-        assertEquals(1, retried)
+        state = HomeState(loaded = true, error = CatalogError.Offline)
+        compose.onNodeWithText("No connection").assertIsDisplayed()
+        compose.onNodeWithText("Retry").performClick()
+        assertEquals(2, retried)
         state = HomeState(loaded = true, error = CatalogError.RateLimited(null))
-        compose.onNodeWithText("GitHub's limit is reached. Try again later.").assertIsDisplayed()
+        compose.onNodeWithText("GitHub's limit is reached").assertIsDisplayed()
+        compose.onNodeWithText("Try again later.").assertIsDisplayed()
     }
 
-    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the notes of an update, the hand over note, no APK, the kept list.
     @Test
-    fun `an update shows its notes and the hand over note, an app with no apk says so`() {
-        val state = HomeState(
-            loaded = true,
-            apps = listOf(
-                status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6", handOver = true),
-                status("dialer", "Dialer", AppState.NO_APK, null, "0.14.20")
-            ),
-            details = mapOf("calculator" to ReleaseDetails("Faster sums\nand a fix", null, emptyMap()))
-        )
-        compose.setContent { HomeContent(state, onRetry = {}) }
-        compose.onNodeWithText("A confirmation will show once.").assertIsDisplayed()
-        compose.onNodeWithText("Faster sums\nand a fix").assertIsDisplayed()
-        compose.onNodeWithText("No APK for this phone").assertIsDisplayed()
+    fun `the kept list shows a banner with a retry and says the repos come from the last visit`() {
+        var retried = 0
+        val state = HomeState(loaded = true, apps = Fixtures.current, error = CatalogError.RateLimited(null), listCached = true)
+        compose.setContent { HomeContent(state, onRetry = { retried++ }) }
+        compose.onNodeWithText("GitHub's limit is reached").assertIsDisplayed()
+        compose.onNodeWithText("Try again later. Showing the list from the last visit.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Retry").performClick()
+        assertEquals(1, retried)
+        compose.onNodeWithText("Dialer").assertIsDisplayed()
     }
 
-    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the buttons of each state and the queue's step on a row.
     @Test
-    fun `each state offers its button, update all counts the updates, a queued entry shows its step and a cancel`() {
-        val apps = listOf(
-            status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6"),
-            status("dialer", "Dialer", AppState.NOT_INSTALLED, null, "0.14.20"),
-            status("mtga", "MTGA", AppState.FOREIGN, "2.15.15", "2.15.15"),
-            status("sms", "SMS", AppState.HAND_OVER, "0.15.6", "0.15.6", handOver = true)
-        )
-        val installed = mutableListOf<String>()
-        var all = 0
+    fun `a queued entry shows its step and a cancel, a failed one its reason`() {
         var cancelled = ""
-        var state by mutableStateOf(HomeState(loaded = true, apps = apps))
-        compose.setContent {
-            HomeContent(state, onRetry = {}, onInstall = { installed += it.entry.repo }, onUpdateAll = { all++ }, onCancel = { cancelled = it })
-        }
-        compose.onNodeWithText("Update all (1)").performClick()
-        compose.onNodeWithText("Update").performClick()
-        compose.onNodeWithText("Install").performClick()
-        compose.onNodeWithText("Hand over").performClick()
+        var all = 0
+        val running = InstallJob(calculator.entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
+        var state by mutableStateOf(HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running), details = Fixtures.details))
+        compose.setContent { HomeContent(state, onRetry = {}, onCancel = { cancelled = it }, onCancelAll = { all++ }) }
+        compose.onAllNodesWithTextCount("Downloading 42%", 2)
+        compose.onNodeWithText("Cancel all").performClick()
         assertEquals(1, all)
-        assertEquals(listOf("calculator", "dialer", "sms"), installed)
-
-        val running = InstallJob(apps[0].entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
-        state = HomeState(loaded = true, apps = apps, jobs = listOf(running))
-        compose.onNodeWithText("Downloading 42%").assertIsDisplayed()
-        compose.onNodeWithText("Cancel all").assertIsDisplayed()
-        compose.onNodeWithText("Cancel").performClick()
-        assertEquals("com.yaz.calculator", cancelled)
-
-        state = HomeState(loaded = true, apps = apps, jobs = listOf(running.copy(step = JobStep.FAILED, why = "No connection.")))
-        compose.onNodeWithText("Failed: No connection.").assertIsDisplayed()
-        // A failed entry offers its button again.
-        compose.onNodeWithText("Update").assertIsDisplayed()
+        state = HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running.copy(step = JobStep.FAILED, why = "No connection.")))
+        compose.onAllNodesWithTextCount("Failed: No connection.", 2)
+        assertEquals("", cancelled)
     }
 
-    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): a queue entry with no app in the list.
     @Test
     fun `an entry whose app is not in the list keeps its own row with a cancel, even when the list is empty`() {
-        val entry = status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6").entry
         var cancelled = ""
-        val job = InstallJob(entry, handOver = false, serial = 1, step = JobStep.CHECKING)
+        val job = InstallJob(calculator.entry, handOver = false, serial = 1, step = JobStep.CHECKING)
         compose.setContent { HomeContent(HomeState(loaded = true, jobs = listOf(job)), onRetry = {}, onCancel = { cancelled = it }) }
         compose.onNodeWithText("Calculator").assertIsDisplayed()
         compose.onNodeWithText("Checking").assertIsDisplayed()
-        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Cancel").performScrollTo().performClick()
         assertEquals("com.yaz.calculator", cancelled)
     }
 
-    // Compose UI test (https://developer.android.com/develop/ui/compose/testing): the words of each step.
     @Test
     fun `every step of the queue has its words`() {
-        val entry = status("calculator", "Calculator", AppState.UPDATE, "0.3.5", "0.3.6").entry
-        fun words(step: JobStep, progress: Float = 0f, why: String? = null) = jobText(InstallJob(entry, false, 1, step, progress, why))
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        fun words(step: JobStep, progress: Float = 0f, why: String? = null) = jobText(context, InstallJob(calculator.entry, false, 1, step, progress, why))
         assertEquals("Waiting", words(JobStep.QUEUED))
         assertEquals("Downloading 0%", words(JobStep.DOWNLOADING))
         assertEquals("Downloading 100%", words(JobStep.DOWNLOADING, 1.7f))
@@ -161,26 +211,16 @@ class HomeContentTest {
     }
 
     @Test
-    fun `a limit with the kept list says the repos come from the last visit`() {
-        val state = HomeState(
-            loaded = true,
-            apps = listOf(status("calculator", "Calculator", AppState.UP_TO_DATE, "0.3.6", "0.3.6")),
-            error = CatalogError.RateLimited(null),
-            listCached = true
-        )
-        compose.setContent { HomeContent(state, onRetry = {}) }
-        compose.onNodeWithText("GitHub's limit is reached. Try again later. Repos from the last visit.").assertIsDisplayed()
+    fun `android names its levels as people do`() {
+        assertEquals("12", HomeModel.androidName(31))
+        assertEquals("16", HomeModel.androidName(36))
+        assertEquals("API 99", HomeModel.androidName(99))
+        assertEquals(AppState.UPDATE, calculator.state)
     }
 
-    @Test
-    fun `a partial list keeps its apps and shows the error above them`() {
-        val state = HomeState(
-            loaded = true,
-            apps = listOf(status("calculator", "Calculator", AppState.UP_TO_DATE, "0.3.6", "0.3.6")),
-            error = CatalogError.Offline
-        )
-        compose.setContent { HomeContent(state, onRetry = {}) }
-        compose.onNodeWithText("No connection.").assertIsDisplayed()
-        compose.onNodeWithText("Calculator").assertIsDisplayed()
+    // The nodes carrying [text], counted: a card and a row can both carry the same word.
+    private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextCount(text: String, atLeast: Int) {
+        val found = onAllNodesWithText(text, substring = false).fetchSemanticsNodes().size
+        assertEquals("nodes with \"$text\": $found", true, found >= atLeast)
     }
 }

@@ -26,6 +26,8 @@ class StoreApplication : Application() {
             modules(appModule)
         }.koin
         // What a crash or a killed process left of an install: the copies and the sessions. Once, off the main thread.
+        // The background check matches the setting at each start (it is not persisted across a restart of the phone, see data/update).
+        com.yaz.store.data.update.UpdateJobs.sync(this, koin.get<com.yaz.store.data.settings.SettingsStore>().current.backgroundCheck)
         val registry = koin.get<SessionRegistry>()
         Thread {
             ApkBundle.sweep(cacheDir)

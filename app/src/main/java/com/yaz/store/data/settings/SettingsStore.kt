@@ -24,7 +24,13 @@ data class Settings(
     /** Multiplier on every text style, one of the steps in ui.theme.TEXT_SCALES. */
     val textScale: Float = 1f,
     /** The notification permission was asked once, at the first Install or Update tap; Android's own limit then governs. */
-    val notificationsAsked: Boolean = false
+    val notificationsAsked: Boolean = false,
+    /** The setup guide was done or skipped: it is never shown again. */
+    val setupDone: Boolean = false,
+    /** A check once a day for updates, with a notification; off unless asked (data/update). */
+    val backgroundCheck: Boolean = false,
+    /** Downloads only on an unmetered network. */
+    val wifiOnly: Boolean = false
 )
 
 /** Small preference file, plain JSON written atomically, like the other apps. */

@@ -26,7 +26,8 @@ import java.security.MessageDigest
 
 /** Why a request failed: no network, GitHub's rate limit, an address or an answer refused, a missing page. */
 class NetError(val kind: Kind, val resetAt: Long? = null, message: String) : Exception(message) {
-    enum class Kind { OFFLINE, RATE_LIMITED, NOT_FOUND, REFUSED }
+    /** [METERED]: the person asked for Wi-Fi only and the phone's network is metered; nothing was asked of GitHub (StoreBackend). */
+    enum class Kind { OFFLINE, RATE_LIMITED, NOT_FOUND, REFUSED, METERED }
 }
 
 /** Where the catalog reads from: the network, or a fake in a test. Every method throws [NetError]. */
@@ -132,6 +133,25 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                     404 -> false
                     else -> throw failure(code, conn)
                 }
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: NetError) {
+            throw e
+        } catch (e: IOException) {
+            throw NetError(NetError.Kind.OFFLINE, message = "offline")
+        }
+    }
+
+    // A small release file as bytes (icon.png), after the kit's get above: the same open (every redirect checked, allow-listed address)
+    // and its readCapped, with a cap of its own (https://developer.android.com/reference/java/net/HttpURLConnection).
+    fun getBytes(url: String, max: Long): ByteArray {
+        val start = parse(url)
+        try {
+            val conn = open(start, null) ?: throw NetError(NetError.Kind.REFUSED, message = "304 without a cache")
+            try {
+                if (conn.contentLengthLong > max) throw NetError(NetError.Kind.REFUSED, message = "too large")
+                return conn.inputStream.use { readCapped(it, max) }
             } finally {
                 conn.disconnect()
             }

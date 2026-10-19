@@ -1,45 +1,56 @@
 package com.yaz.store.feature.home
 
-// Temporary Home: a plain list of the catalog with Install, Update, Update all and Cancel and the state of each entry of the install
-// queue, replaced by the real screens later. Compose's LazyColumn and LifecycleEventEffect
-// (https://developer.android.com/develop/ui/compose/lists, https://developer.android.com/develop/ui/compose/lifecycle), the base kit's
-// ScreenBanner, ZoneSurface, EmptyZone, LoadingMark and BoldButton/QuietButton.
-// - The notification permission is asked at the first Install or Update tap with Compose's permission launcher
-//   (https://developer.android.com/training/permissions/requesting, ActivityResultContracts.RequestPermission) on Android 13 and later
-//   (https://developer.android.com/develop/ui/views/notifications/notification-permission); the queue is already running, a refusal changes nothing.
+// Home: the Updates zone when some app waits, then Installed and Available. Sources:
+// - the frame and its floating glass panes are Files' (YAZ/Files at HEAD, feature/browse/BrowseScreen.kt): FloatingFrame with FloatingTop,
+//   the content running under them, and its PullToRefreshBox with the PullIndicator (Material 3,
+//   https://developer.android.com/develop/ui/compose/components/pull-to-refresh);
+// - the lists: GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/MainScreen.kt)
+//   lists every app with one state button; Google Play's updates zone sits on top (HomeUpdates.kt); two columns side by side from the
+//   expanded width class (this app's navigation/WindowWidth.kt, Material's window size classes,
+//   https://developer.android.com/develop/adaptive/large-screens/support-different-screen-sizes), one scroll under the other below it;
+// - the state is hoisted so a test draws HomeContent with fixed data (https://developer.android.com/develop/ui/compose/state-hoisting);
+// - the notification permission is asked at the first Install or Update tap with Compose's permission launcher
+//   (https://developer.android.com/training/permissions/requesting, ActivityResultContracts.RequestPermission) on Android 13 and later;
 // - Android's confirmation screen, when it asks (an app Store does not hold yet), is started by the screen that is in front, as AOSP's ApiDemos
 //   InstallApkSessionApi starts EXTRA_INTENT from its activity
 //   (https://android.googlesource.com/platform/development/+/refs/heads/main/samples/ApiDemos/src/com/example/android/apis/content/InstallApkSessionApi.java).
 import android.Manifest
-import android.app.Application
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -47,71 +58,92 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.yaz.store.R
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
-import com.yaz.store.data.catalog.Catalog
-import com.yaz.store.data.catalog.CatalogError
-import com.yaz.store.data.catalog.ReleaseDetails
+import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.install.InstallJob
-import com.yaz.store.data.install.InstallQueue
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.SettingsStore
-import com.yaz.store.ui.component.BoldButton
+import com.yaz.store.feature.eggs.StoreEgg
+import com.yaz.store.navigation.WidthClass
+import com.yaz.store.ui.component.BannerAction
 import com.yaz.store.ui.component.EmptyZone
+import com.yaz.store.ui.component.FloatingAction
+import com.yaz.store.ui.component.FloatingFrame
+import com.yaz.store.ui.component.FloatingTop
 import com.yaz.store.ui.component.LoadingMark
+import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.ScreenBanner
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.navigationBarBottom
-import com.yaz.store.ui.component.statusBarTop
+import com.yaz.store.ui.component.rememberRefreshHaptics
+import com.yaz.store.ui.icon.AppIcons
 import org.koin.compose.koinInject
-import java.util.Date
 
 @Composable
-fun HomeScreen() {
-    val catalog: Catalog = koinInject()
-    val queue: InstallQueue = koinInject()
+fun HomeScreen(model: HomeViewModel, onSettings: () -> Unit, onPage: (String) -> Unit) {
     val settings: SettingsStore = koinInject()
+    val icons: IconStore = koinInject()
     val context = LocalContext.current
-    val app = context.applicationContext as Application
-    val model: HomeViewModel = viewModel { HomeViewModel(app, catalog, queue) }
     val state by model.state.collectAsStateWithLifecycle()
-    // Each time the app comes to the front: the account and the phone are read again (an unchanged answer comes from the ETag cache).
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { model.load() }
+    val afterTap = notificationAsker(context, settings)
+    ConfirmWhileInFront(state.jobs)
 
-    val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    val askedBefore = { settings.current.notificationsAsked }
-    // The first Install or Update tap asks for the notification permission, once; the install goes on whatever the answer.
-    val afterTap = {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedBefore() &&
+    WithIcons(remember { PhoneIcons(context, icons) }) {
+        HomeContent(
+            state,
+            onRetry = model::load,
+            onInstall = { if (model.install(it)) afterTap() },
+            onUpdateAll = { if (model.updateAll() > 0) afterTap() },
+            onCancel = model::cancel,
+            onCancelAll = model::cancelAll,
+            onOpen = { openApp(context, it) },
+            onPage = { onPage(it.entry.packageName) },
+            onSettings = onSettings,
+            seen = model.popped
+        )
+    }
+}
+
+/**
+ * The first Install or Update tap asks for the notification permission, once; the install goes on whatever the answer. The function it
+ * returns is called after the tap.
+ */
+@Composable
+fun notificationAsker(context: Context, settings: SettingsStore): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    return {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !settings.current.notificationsAsked &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             settings.update { it.copy(notificationsAsked = true) }
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
-
-    // Android's confirmation screen, once per entry, while this screen is in front.
-    val resumed by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val started = remember { mutableSetOf<Long>() }
-    LaunchedEffect(state.jobs, resumed) {
-        if (!resumed.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
-        state.jobs.filter { it.step == JobStep.CONFIRM && it.confirm != null && started.add(it.serial) }
-            .forEach { job -> runCatching { context.startActivity(job.confirm) } }
-    }
-
-    HomeContent(
-        state,
-        onRetry = model::load,
-        onInstall = { if (model.install(it)) afterTap() },
-        onUpdateAll = { if (model.updateAll() > 0) afterTap() },
-        onCancel = model::cancel,
-        onCancelAll = model::cancelAll
-    )
 }
 
-/** The list for a state: stateless, so a test can draw it with fixed data (Compose's state hoisting, https://developer.android.com/develop/ui/compose/state-hoisting). */
+/** Android's confirmation screen, once per entry, while this screen is in front. */
+@Composable
+fun ConfirmWhileInFront(jobs: List<InstallJob>) {
+    val context = LocalContext.current
+    val resumed by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val started = remember { mutableSetOf<Long>() }
+    LaunchedEffect(jobs, resumed) {
+        if (!resumed.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
+        jobs.filter { it.step == JobStep.CONFIRM && it.confirm != null && started.add(it.serial) }
+            .forEach { job -> runCatching { context.startActivity(job.confirm) } }
+    }
+}
+
+/** Starts the app's launcher activity (PackageManager.getLaunchIntentForPackage, https://developer.android.com/reference/android/content/pm/PackageManager#getLaunchIntentForPackage(java.lang.String)). */
+fun openApp(context: Context, status: AppStatus) {
+    context.packageManager.getLaunchIntentForPackage(status.entry.packageName)?.let { runCatching { context.startActivity(it) } }
+}
+
+/** The screen for a state: stateless, so a test can draw it with fixed data. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeContent(
     state: HomeState,
@@ -119,129 +151,142 @@ fun HomeContent(
     onInstall: (AppStatus) -> Unit = {},
     onUpdateAll: () -> Unit = {},
     onCancel: (String) -> Unit = {},
-    onCancelAll: () -> Unit = {}
+    onCancelAll: () -> Unit = {},
+    onOpen: (AppStatus) -> Unit = {},
+    onPage: (AppStatus) -> Unit = {},
+    onSettings: () -> Unit = {},
+    seen: MutableSet<String> = remember { mutableSetOf() }
 ) {
     val context = LocalContext.current
-    val error = state.error
+    var egg by remember { mutableStateOf<Offset?>(null) }
+    val askedRefresh = rememberRefreshHaptics(state.loading, state.error != null)
+    val pull = rememberPullToRefreshState()
+    val actions = remember(onInstall, onOpen, onPage, onCancel) { CardActions(onInstall, onOpen, onPage, onCancel) }
     // An entry of the queue whose app is not in the list read from GitHub (the list changed under it) keeps its row until it ends.
     val orphans = state.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
     val empty = state.apps.isEmpty() && orphans.isEmpty()
-    when {
-        empty && !state.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingMark(size = 56.dp) }
-        empty && error != null ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyZone(title = "Store", message = errorLine(state, error, context), actionLabel = "Retry", onAction = onRetry)
+    val error = state.error
+
+    FloatingFrame(
+        bottom = navigationBarBottom(),
+        top = {
+            FloatingTop(
+                stringResource(R.string.home_title),
+                trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) }
+            )
+        },
+        overlay = { egg?.let { StoreEgg(it) { egg = null } } }
+    ) { padding ->
+        when {
+            empty && !state.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingMark(size = 56.dp) }
+            empty -> Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()), contentAlignment = Alignment.Center) {
+                EmptyZone(
+                    title = if (error != null) errorTitle(context, error) else stringResource(R.string.empty_title),
+                    message = if (error != null) errorDetail(context, error, state.listCached).orEmpty() else stringResource(R.string.empty_none),
+                    actionLabel = stringResource(R.string.retry),
+                    onAction = onRetry
+                )
             }
-        empty ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyZone(title = "Store", message = "No app to list yet.") }
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = statusBarTop(), bottom = navigationBarBottom() + 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            item { ScreenBanner(title = "Store") }
-            if (error != null) item { Text(errorLine(state, error, context), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 4.dp)) }
-            val waiting = state.apps.count { app -> app.state == AppState.UPDATE && state.jobs.none { it.entry.packageName == app.entry.packageName && it.step.active } }
-            val running = state.jobs.count { it.step.active }
-            if (waiting > 0 || running > 0) item { AllRow(waiting, running, onUpdateAll, onCancelAll) }
-            items(orphans, key = { "job-${it.serial}" }) { JobRow(it, onCancel) }
-            items(state.apps, key = { it.entry.repo }) { status ->
-                AppRow(status, state.details[status.entry.repo], state.jobs.firstOrNull { it.entry.packageName == status.entry.packageName }, onInstall, onCancel)
+            else -> PullToRefreshBox(
+                isRefreshing = state.loading,
+                onRefresh = {
+                    askedRefresh()
+                    onRetry()
+                },
+                modifier = Modifier.fillMaxSize(),
+                state = pull,
+                // Under the floating panes, where the list starts, not behind them.
+                indicator = {
+                    PullIndicator(
+                        state = pull,
+                        isRefreshing = state.loading,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding())
+                    )
+                }
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
+                        val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
+                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen) { egg = it }
+                    }
+                }
             }
         }
     }
 }
 
-// Update all and Cancel all share the row, each over the whole width when alone.
 @Composable
-private fun AllRow(waiting: Int, running: Int, onUpdateAll: () -> Unit, onCancelAll: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (waiting > 0) BoldButton(onClick = onUpdateAll, modifier = Modifier.weight(1f), filled = true) { Text("Update all ($waiting)") }
-        if (running > 0) QuietButton(onClick = onCancelAll, modifier = Modifier.weight(1f)) { Text("Cancel all") }
+private fun HomeList(
+    state: HomeState,
+    orphans: List<InstallJob>,
+    padding: PaddingValues,
+    wide: Boolean,
+    actions: CardActions,
+    onUpdateAll: () -> Unit,
+    onCancelAll: () -> Unit,
+    onRetry: () -> Unit,
+    seen: MutableSet<String>,
+    onEgg: (Offset) -> Unit
+) {
+    val context = LocalContext.current
+    val error = state.error
+    val updates = HomeModel.updates(state.apps)
+    val installed = HomeModel.installed(state.apps)
+    val available = HomeModel.available(state.apps)
+    // The banner and every zone keep 12 dp of their own on the side (ScreenBanner), the lists the same.
+    val side = Modifier.padding(horizontal = 12.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        if (error != null) {
+            item("error") {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    ScreenBanner(
+                        title = errorTitle(context, error),
+                        trailing = { BannerAction(AppIcons.Refresh, stringResource(R.string.retry), onRetry) }
+                    )
+                    errorDetail(context, error, state.listCached)?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = side)
+                    }
+                }
+            }
+        }
+        items(orphans, key = { "job-${it.serial}" }) { OrphanRow(it, actions.onCancel, side) }
+        if (updates.isNotEmpty()) {
+            item("updates") {
+                UpdatesZone(updates, state.jobs, state.details, actions, onUpdateAll, onCancelAll, seen, side)
+            }
+        } else if (HomeModel.allCurrent(state.apps)) {
+            item("uptodate") { UpToDateRow(onEgg, seen, side) }
+        }
+        item("lists") {
+            val both = installed.isNotEmpty() && available.isNotEmpty()
+            if (wide && both) {
+                Row(side.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    AppList(R.string.installed_title, installed, state.jobs, actions, seen, Modifier.weight(1f))
+                    AppList(R.string.available_title, available, state.jobs, actions, seen, Modifier.weight(1f))
+                }
+            } else {
+                Column(side.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    if (installed.isNotEmpty()) AppList(R.string.installed_title, installed, state.jobs, actions, seen)
+                    if (available.isNotEmpty()) AppList(R.string.available_title, available, state.jobs, actions, seen)
+                }
+            }
+        }
     }
 }
 
-// The row of a queue entry with no app in the list: AppRow's own name, package and step lines and Cancel (this file), a Compose Column in a
-// ZoneSurface (https://developer.android.com/develop/ui/compose/layouts/basics).
+// The row of a queue entry with no app in the list: its name, package and step, and Cancel while it runs.
 @Composable
-private fun JobRow(job: InstallJob, onCancel: (String) -> Unit) {
-    ZoneSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun OrphanRow(job: InstallJob, onCancel: (String) -> Unit, modifier: Modifier) {
+    ZoneSurface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(job.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(job.entry.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(jobText(job), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            if (job.step.active) QuietButton(onClick = { onCancel(job.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            Progress(job)
+            if (job.step.active) QuietButton(onClick = { onCancel(job.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
         }
     }
-}
-
-@Composable
-private fun AppRow(status: AppStatus, details: ReleaseDetails?, job: InstallJob?, onInstall: (AppStatus) -> Unit, onCancel: (String) -> Unit) {
-    ZoneSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(status.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(status.entry.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stateText(status.state), style = MaterialTheme.typography.bodyMedium)
-            if (job != null) {
-                Text(jobText(job), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            }
-            Text(
-                "Installed ${status.installed?.versionName ?: "-"}, offered ${status.entry.versionName}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (status.handOver) Text("A confirmation will show once.", style = MaterialTheme.typography.bodySmall)
-            details?.notes?.takeIf { it.isNotEmpty() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-            val label = actionLabel(status.state)
-            if (job?.step?.active == true) {
-                QuietButton(onClick = { onCancel(status.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-            } else if (label != null) {
-                BoldButton(onClick = { onInstall(status) }, modifier = Modifier.fillMaxWidth()) { Text(label) }
-            }
-        }
-    }
-}
-
-/** The button of a state: nothing for an app that is up to date, foreign, too new or without an APK. */
-internal fun actionLabel(state: AppState): String? = when (state) {
-    AppState.NOT_INSTALLED -> "Install"
-    AppState.UPDATE -> "Update"
-    AppState.HAND_OVER -> "Hand over"
-    else -> null
-}
-
-/** What an entry of the queue is doing, in words. */
-internal fun jobText(job: InstallJob): String = when (job.step) {
-    JobStep.QUEUED -> "Waiting"
-    JobStep.DOWNLOADING -> "Downloading ${(job.progress * 100).toInt().coerceIn(0, 100)}%"
-    JobStep.CHECKING -> "Checking"
-    JobStep.INSTALLING -> "Installing"
-    JobStep.CONFIRM -> "Waiting for your confirmation"
-    JobStep.DONE -> "Installed"
-    JobStep.FAILED -> "Failed: ${job.why ?: "The installation could not be done."}"
-}
-
-private fun stateText(state: AppState): String = when (state) {
-    AppState.NOT_INSTALLED -> "Not installed"
-    AppState.UP_TO_DATE -> "Up to date"
-    AppState.UPDATE -> "Update available"
-    AppState.HAND_OVER -> "Installed elsewhere, to hand over"
-    AppState.FOREIGN -> "Signed by another key, left alone"
-    AppState.TOO_NEW -> "Needs a newer Android"
-    AppState.NO_APK -> "No APK for this phone"
-}
-
-// The error, and when the repos came from the list kept at the last opening, a word saying so
-// (a plain string template, https://kotlinlang.org/docs/strings.html#string-templates).
-private fun errorLine(state: HomeState, error: CatalogError, context: Context): String =
-    errorText(error, context) + if (state.listCached) " Repos from the last visit." else ""
-
-private fun errorText(error: CatalogError, context: Context): String = when (error) {
-    CatalogError.Offline -> "No connection."
-    is CatalogError.RateLimited -> error.resetAt?.let {
-        "GitHub's limit is reached. Try again at ${DateFormat.getTimeFormat(context).format(Date(it * 1000))}."
-    } ?: "GitHub's limit is reached. Try again later."
-    CatalogError.Refused -> "GitHub's answer was refused."
 }

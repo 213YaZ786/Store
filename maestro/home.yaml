@@ -1,0 +1,31 @@
+# Home with an update (Calculator offered 0.3.7, installed 0.3.6) and an app to install (Dialer), seeded by run-home.sh; then the app page
+# and Settings. Texts and accessibility labels only. Commands from https://docs.maestro.dev/reference/commands-available.
+appId: com.yaz.store.debug
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Update all.*"
+    timeout: 60000
+- assertVisible: "Updates"
+- assertVisible: "0.3.6 → 0.3.7.*"
+- assertVisible: "Installed"
+- assertVisible: "Available"
+- assertVisible: "YAZ"
+- assertVisible: "Install"
+# The app page of an app not installed.
+- tapOn: "Dialer"
+- assertVisible: "com.yaz.dialer"
+- scrollUntilVisible:
+    element: "Source"
+- tapOn: "Back"
+- assertVisible: "Updates"
+# Settings.
+- tapOn: "Settings"
+- assertVisible: "Check in the background"
+- assertVisible: "Only on Wi-Fi"
+- assertVisible: "Theme"
+- tapOn: "Only on Wi-Fi"
+- tapOn: "Only on Wi-Fi"
+- tapOn: "Back"
+- assertVisible: "Update all.*"

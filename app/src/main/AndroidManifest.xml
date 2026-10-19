@@ -82,6 +82,13 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- The once-a-day check, scheduled only while Settings' "Check in the background" is on (GrapheneOS' App Store UpdateCheckJob).
+             Only the system may bind it. -->
+        <service
+            android:name=".data.update.UpdateCheckJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- The Cancel button of that notification. Named by an explicit PendingIntent, never exported. -->
         <receiver
             android:name=".data.install.InstallCancelReceiver"

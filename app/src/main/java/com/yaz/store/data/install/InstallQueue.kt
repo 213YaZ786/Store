@@ -255,5 +255,7 @@ class InstallQueue(
         NetError.Kind.RATE_LIMITED -> "GitHub's limit is reached. Try again later."
         NetError.Kind.NOT_FOUND -> "The release has no such file."
         NetError.Kind.REFUSED -> "GitHub's answer was refused."
+        // Settings' "Only on Wi-Fi", checked by StoreBackend.download (https://developer.android.com/training/basics/network-ops/managing).
+        NetError.Kind.METERED -> "Waiting for Wi-Fi."
     }
 }

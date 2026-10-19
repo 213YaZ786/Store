@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -68,7 +69,8 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
             all {
-                it.maxHeapSize = "2048m"
+                it.systemProperties["robolectric.pixelCopyRenderMode"] = "hardware"
+                it.maxHeapSize = "4096m"
                 System.getenv("STORE_SHOTS")?.let { dir -> it.systemProperties["shots.dir"] = dir }
                 // Robolectric on JDK 17 and later (https://robolectric.org/getting-started/).
                 it.jvmArgs(
@@ -131,5 +133,7 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

@@ -8,4 +8,6 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.serialization) apply false
+    // Screens compared pixel for pixel, as SMS's build has it (Roborazzi's README, https://github.com/takahirom/roborazzi).
+    alias(libs.plugins.roborazzi) apply false
 }

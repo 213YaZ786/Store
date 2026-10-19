@@ -291,7 +291,9 @@ class Catalog(
     /** Where the notes of a tag are kept for good (one file per tag); null keeps none. */
     private val notesDir: File? = null,
     private val locales: () -> List<String> = ::phoneLocaleTags,
-    private val abis: () -> List<String> = ::phoneAbis
+    private val abis: () -> List<String> = ::phoneAbis,
+    /** Debug builds only (AppModule): entries a test puts beside the live list, see [Seeded]. Empty in the release build. */
+    private val seeded: () -> List<StoreEntry> = { emptyList() }
 ) {
 
     private sealed interface Outcome {
@@ -304,7 +306,19 @@ class Catalog(
      * The repos of the account (from the cached list, and said so, when GitHub's limit is reached or the phone is offline) and the apps
      * of their latest releases; errors are carried, never thrown.
      */
-    suspend fun load(): CatalogResult = withContext(Dispatchers.IO) {
+    // The former load, renamed loadLive; load adds the debug seed to it (kotlinx.coroutines withContext,
+    // https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html).
+    suspend fun load(): CatalogResult {
+        val live = loadLive()
+        val extra = withContext(Dispatchers.IO) { seeded() }
+        if (extra.isEmpty()) return live
+        // A seeded entry replaces the live one of the same package; the error of the live read stays, so a test sees both.
+        val merged = (live.entries.filter { l -> extra.none { it.packageName == l.packageName } } + extra)
+            .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
+        return live.copy(entries = merged)
+    }
+
+    private suspend fun loadLive(): CatalogResult = withContext(Dispatchers.IO) {
         var listError: NetError? = null
         val listUrl = ReleaseNet.repoListUrl()
         val text = try {
@@ -386,7 +400,7 @@ class Catalog(
     }
 
     private fun errorOf(e: NetError): CatalogError = when (e.kind) {
-        NetError.Kind.OFFLINE -> CatalogError.Offline
+        NetError.Kind.OFFLINE, NetError.Kind.METERED -> CatalogError.Offline
         NetError.Kind.RATE_LIMITED -> CatalogError.RateLimited(e.resetAt)
         NetError.Kind.NOT_FOUND, NetError.Kind.REFUSED -> CatalogError.Refused
     }
