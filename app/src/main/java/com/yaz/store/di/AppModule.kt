@@ -42,12 +42,12 @@ val appModule = module {
     single { SessionRegistry(PrefsSessionStore(androidContext())) }
     // The catalog of our apps, read from GitHub through the one door of the network (data/net, data/catalog).
     single { ReleaseNet(androidContext().cacheDir) }
-    // The notes of a tag are kept in their own folder of the cache, one file per tag.
+    // The date and sizes of a tag are kept in their own folder of the cache, one file per tag.
     // In a debug build, entries a test pushes to files/debug-seed.json (data/catalog/Seeded) stand beside the live ones.
     single {
         val app = androidContext()
         Catalog(
-            get<ReleaseNet>(), File(app.cacheDir, "notes"),
+            get<ReleaseNet>(), File(app.cacheDir, "details"),
             seeded = if (BuildConfig.DEBUG) ({ Seeded.read(File(app.filesDir, "debug-seed.json"), phoneLocaleTags(), phoneAbis()) }) else ({ emptyList() }),
             // A release with no app.json is read from its APK by ranges, in the isolated SparseInspectorService (data/sparse).
             overlay = if (BuildConfig.DEBUG) debugOverlay(app) else null,

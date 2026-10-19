@@ -50,12 +50,10 @@ object Fixtures {
     /** Every installed app is current. */
     val current = listOf(dialer, sms, files, mushaf)
 
-    val notes = ReleaseDetails(
-        notes = "Faster sums on long expressions.\nThe unit converter remembers its last pair.\nFixed the sheet's column width after a turn of the screen.\n" +
-            "Fixed a crash on an empty cell.\nSee https://github.com/213YaZ786/Calculator/releases for older versions.",
+    val release = ReleaseDetails(
         publishedAt = Instant.parse("2026-10-17T12:00:00Z"),
         sizes = mapOf("Calculator.apk" to 4_200_000L, "Files.apk" to 6_800_000L)
     )
 
-    val details = mapOf("Calculator/v0.3.6" to notes)
+    val details = mapOf("Calculator/v0.3.6" to release)
 }

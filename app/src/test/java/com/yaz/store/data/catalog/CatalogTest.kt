@@ -310,20 +310,19 @@ class CatalogTest {
         assertNull(result.error)
     }
 
-    // The notes of a tag
+    // The date and sizes of a tag
 
     private fun entry(repo: String = "A", tag: String = "v1.0.0") = load(apps(repo)).entries.single().copy(tag = tag)
 
-    private fun release(tag: String, body: String = "Fixes") =
-        """{"tag_name":"$tag","published_at":"2026-10-18T10:00:00Z","body":"$body","assets":[{"name":"Calculator-0.3.6.apk","size":4321}]}"""
+    private fun release(tag: String, size: Long = 4321) =
+        """{"tag_name":"$tag","published_at":"2026-10-18T10:00:00Z","body":"Fixes","assets":[{"name":"Calculator-0.3.6.apk","size":$size}]}"""
 
     @Test
-    fun `the notes of a tag are read from the API once and kept for good`() {
+    fun `the date and sizes of a tag are read from the API once and kept for good`() {
         val tags = ReleaseNet.tagsUrl("A", "v1.0.0")
         val fake = Fake(mapOf(tags to release("v1.0.0")))
         val catalog = Catalog(fake, folder.newFolder("notes"), { pixel }, { pixel })
         val first = catalog.details(entry())!!
-        assertEquals("Fixes", first.notes)
         assertEquals(Instant.parse("2026-10-18T10:00:00Z"), first.publishedAt)
         assertEquals(4321L, first.sizes["Calculator-0.3.6.apk"])
         assertEquals(first, catalog.details(entry()))
@@ -334,15 +333,15 @@ class CatalogTest {
 
     @Test
     fun `another tag is another read`() {
-        val fake = Fake(mapOf(ReleaseNet.tagsUrl("A", "v1.0.0") to release("v1.0.0"), ReleaseNet.tagsUrl("A", "v1.1.0") to release("v1.1.0", "More")))
+        val fake = Fake(mapOf(ReleaseNet.tagsUrl("A", "v1.0.0") to release("v1.0.0"), ReleaseNet.tagsUrl("A", "v1.1.0") to release("v1.1.0", 9000)))
         val catalog = Catalog(fake, folder.newFolder("notes"))
-        assertEquals("Fixes", catalog.details(entry())!!.notes)
-        assertEquals("More", catalog.details(entry(tag = "v1.1.0"))!!.notes)
+        assertEquals(4321L, catalog.details(entry())!!.sizes["Calculator-0.3.6.apk"])
+        assertEquals(9000L, catalog.details(entry(tag = "v1.1.0"))!!.sizes["Calculator-0.3.6.apk"])
         assertEquals(2, fake.asked.size)
     }
 
     @Test
-    fun `notes that cannot be read now are null and asked again next time`() {
+    fun `details that cannot be read now are null and asked again next time`() { // same test, renamed (JUnit 4, https://github.com/junit-team/junit4/wiki/Assertions)
         val tags = ReleaseNet.tagsUrl("A", "v1.0.0")
         val limited = Fake(mapOf(tags to NetError(NetError.Kind.RATE_LIMITED, 1L, "rate limited")))
         val catalog = Catalog(limited, folder.newFolder("notes"))
@@ -356,14 +355,14 @@ class CatalogTest {
     }
 
     @Test
-    fun `a kept file that is not notes is read again`() {
+    fun `a kept file that is not details is read again`() {
         val tags = ReleaseNet.tagsUrl("A", "v1.0.0")
         val dir = folder.newFolder("notes")
         val fake = Fake(mapOf(tags to release("v1.0.0")))
         val catalog = Catalog(fake, dir)
         catalog.details(entry())
         dir.listFiles()!!.forEach { it.writeText("garbage") }
-        assertEquals("Fixes", catalog.details(entry())!!.notes)
+        assertEquals(4321L, catalog.details(entry())!!.sizes["Calculator-0.3.6.apk"])
         assertEquals(2, fake.asked.size)
     }
 

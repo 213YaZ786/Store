@@ -117,7 +117,7 @@ class StoreScreenshotTest {
 
     @Test
     fun pageUpdate() = capture("page_update") {
-        AppPageContent(Fixtures.calculator, null, Fixtures.notes, actions, onBack = {})
+        AppPageContent(Fixtures.calculator, null, Fixtures.release, actions, onBack = {})
     }
 
     @Test
@@ -127,7 +127,7 @@ class StoreScreenshotTest {
 
     @Test
     fun pageNotInstalled() = capture("page_install") {
-        AppPageContent(Fixtures.files, null, Fixtures.notes, actions, onBack = {})
+        AppPageContent(Fixtures.files, null, Fixtures.release, actions, onBack = {})
     }
 
     @Test

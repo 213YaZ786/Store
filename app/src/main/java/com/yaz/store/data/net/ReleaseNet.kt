@@ -6,7 +6,7 @@ package com.yaz.store.data.net
 // sha256. The kit's open is itself ported from Mushaf's Net.open, after
 // https://developer.android.com/reference/java/net/HttpURLConnection#setInstanceFollowRedirects(boolean) and
 // https://developer.android.com/privacy-and-security/risks/cleartext.
-// Added here: a path allow-list (only our account's repo list, release notes, and release files), an ETag cache of the repo list
+// Added here: a path allow-list (only our account's repo list, a release's date and sizes, and release files), an ETag cache of the repo list
 // (https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate;
 // without a token a 304 still counts against the 60 requests an hour, measured 2026-10-18, so the cache saves the download only),
 // GitHub's rate-limit answers
@@ -377,7 +377,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         /** The address of the repo list of our account. */
         fun repoListUrl(): String = "https://$API_HOST/users/$OWNER/repos?$REPO_LIST_QUERY"
 
-        /** The address of the notes of the release tagged [tag] of [repo]. */
+        /** The address of the date and file sizes of the release tagged [tag] of [repo]. */
         fun tagsUrl(repo: String, tag: String): String = "https://$API_HOST/repos/$OWNER/$repo/releases/tags/$tag"
 
         /** The address that redirects to the app.json of the latest release of [repo]. */
@@ -401,7 +401,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
 
         /**
          * Whether [url] may be asked for at all: HTTPS, no user, no fragment, the default port, and one of four shapes
-         * only (the repo list of our account, the notes of one release of one of its repos, the latest app.json of one of its repos,
+         * only (the repo list of our account, the date and sizes of one release of one of its repos, the latest app.json of one of its repos,
          * a file of one of its releases). Percent signs, dots segments and other hosts never match. After the kit's fromRepo
          * (Updates.fromRepo).
          */

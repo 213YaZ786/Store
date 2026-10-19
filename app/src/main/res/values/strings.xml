@@ -9,7 +9,6 @@
     <string name="cancel">Cancel</string>
     <string name="cancel_all">Cancel all</string>
     <string name="more">More</string>
-    <string name="less">Less</string>
     <string name="updates_title">Updates</string>
     <string name="update_all">Update all</string>
     <string name="update_all_size">Update all · %1$s</string>
@@ -18,7 +17,6 @@
     <string name="up_to_date">Up to date</string>
     <string name="versions_move">%1$s → %2$s</string>
     <string name="versions_move_size">%1$s → %2$s · %3$s</string>
-    <string name="hand_over_note">Android will ask once</string>
     <string name="empty_title">Store</string>
     <string name="empty_none">No app to list yet.</string>
 
@@ -58,7 +56,6 @@
     <string name="page_size">Download size</string>
     <string name="page_released">Released</string>
     <string name="page_installer">Installer</string>
-    <string name="page_notes">What\'s new</string>
     <string name="page_not_installed">Not installed</string>
     <string name="page_source">Source</string>
     <string name="installer_store">Store manages updates</string>

@@ -94,7 +94,7 @@ internal fun RowDivider() {
 
 /**
  * One app: icon, name, a line of words, its version when given, the state button on the right; the whole row opens the app's page (a
- * transparent tap target, no second zone). [below] sits under the row, aligned with the text (notes, the hand over line).
+ * transparent tap target, no second zone). [below] sits under the row, aligned with the text; [beforeButton] sits just before the button.
  */
 @Composable
 internal fun AppRow(
@@ -103,7 +103,8 @@ internal fun AppRow(
     actions: CardActions,
     subtitle: String,
     version: String?,
-    below: (@Composable ColumnScope.() -> Unit)? = null
+    below: (@Composable ColumnScope.() -> Unit)? = null,
+    beforeButton: (@Composable () -> Unit)? = null
 ) {
     val active = job != null && job.step.active
     Column(
@@ -137,6 +138,12 @@ internal fun AppRow(
             }
             if (active) {
                 QuietButton(onClick = { actions.onCancel(status.entry.packageName) }) { Text(stringResource(R.string.cancel)) }
+            } else if (beforeButton != null) {
+                // The link and the button stay close, so the line of words keeps the room.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    beforeButton()
+                    ActionButton(status, actions)
+                }
             } else {
                 ActionButton(status, actions)
             }
@@ -159,7 +166,7 @@ internal fun AppRow(
 internal fun ActionButton(status: AppStatus, actions: CardActions, modifier: Modifier = Modifier) {
     when (val action = HomeModel.action(status)) {
         HomeModel.Action.Open -> BoldButton(onClick = { actions.onOpen(status) }, modifier = modifier) { Text(stringResource(R.string.action_open)) }
-        HomeModel.Action.Update -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, filled = true) { Text(stringResource(R.string.action_update)) }
+        HomeModel.Action.Update -> UpdateButton(onClick = { actions.onPrimary(status) }, label = stringResource(R.string.action_update), modifier = modifier)
         HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, filled = true) { Text(stringResource(R.string.action_install)) }
         HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier) { Text(stringResource(R.string.action_hand_over)) }
         is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = modifier.widthIn(max = 150.dp), enabled = false) {

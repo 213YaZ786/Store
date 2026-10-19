@@ -1,7 +1,7 @@
 package com.yaz.store.data.catalog
 
 // The release icons of apps not installed: icon.png of a release, kept on disk once read (a tag's files do not change), one file per tag,
-// as Catalog.details keeps a tag's notes (this app's data/catalog/Catalog.kt) and as GrapheneOS' App Store keeps the icons of its repo
+// as Catalog.details keeps a tag's date and sizes (this app's data/catalog/Catalog.kt) and as GrapheneOS' App Store keeps the icons of its repo
 // (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/Repo.kt). The bytes are never decoded here:
 // the screen hands them to the isolated DecoderService (core/security/SafeImages).
 import com.yaz.store.core.apk.ApkInfoCodec

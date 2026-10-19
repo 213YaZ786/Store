@@ -1,9 +1,9 @@
 package com.yaz.store.feature.app
 
 // The page of one app. Sources:
-// - Google Play's app page header (icon, name, then Open and Uninstall side by side) and its "What's new" in place;
+// - Google Play's app page header (icon, name, then Open and Uninstall side by side);
 // - komi-store's details page (Apache-2.0, https://github.com/komi-store/komi-store, feature/details/presentation/.../DetailsRoot.kt):
-//   the release's notes, versions and sizes under the header; here the notes are plain text, links stay text and are never opened by the page;
+//   the versions and sizes under the header;
 // - the frame is Files' (YAZ/Files at HEAD, feature/settings/SettingsScreen.kt): FloatingFrame with FloatingTop, a Back round action,
 //   the content running under the panes;
 // - Uninstall is Android's ACTION_DELETE with a package: URI, which needs REQUEST_DELETE_PACKAGES
@@ -132,11 +132,6 @@ fun AppPageContent(
                         details?.publishedAt?.let { Field(R.string.page_released, DateFormat.getMediumDateFormat(context).format(Date(it.toEpochMilli()))) }
                         installerWords(status)?.let { Field(R.string.page_installer, stringResource(it)) }
                     }
-                }
-
-                details?.notes?.takeIf { it.isNotEmpty() }?.let { notes ->
-                    // Plain text: nothing in it is a link, nothing opens.
-                    Block(R.string.page_notes, seen) { Text(notes, style = MaterialTheme.typography.bodyMedium) }
                 }
 
                 BoldButton(onClick = { onSource(status) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.page_source)) }

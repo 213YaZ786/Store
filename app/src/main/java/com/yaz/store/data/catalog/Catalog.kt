@@ -3,7 +3,7 @@ package com.yaz.store.data.catalog
 // The list of our apps, read from the 213YaZ786 account at each opening (nothing written in the app). Sources:
 // - GitHub's REST endpoints and fields used: list repositories for a user and get a release by tag name
 //   (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user, https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name).
-//   Without a token the API gives 60 requests an hour and a 304 still counts, so it serves only the repo list and the notes of a tag;
+//   Without a token the API gives 60 requests an hour and a 304 still counts, so it serves only the repo list and the date and sizes of a tag;
 //   each release is read through "link to the latest release asset"
 //   (https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases), see data/net/ReleaseNet.
 // - komi-store's GitHub client reads a repo's release and its assets (https://github.com/komi-store/komi-store,
@@ -72,10 +72,8 @@ data class StoreEntry(
     val pageUrl: String get() = "https://github.com/${ReleaseNet.OWNER}/$repo/releases/tag/$tag"
 }
 
-/** What only GitHub's API tells of a release: its text, its date, the size of each file. Read once per tag. */
+/** What only GitHub's API tells of a release: its date and the size of each file. Read once per tag. */
 data class ReleaseDetails(
-    /** The release's text, plain, at most [CatalogRules.MAX_NOTES] characters. */
-    val notes: String,
     val publishedAt: Instant?,
     val sizes: Map<String, Long>
 )
@@ -137,16 +135,14 @@ private data class AssetDto(val name: String = "", val size: Long = 0)
 private data class ReleaseDto(
     @SerialName("tag_name") val tagName: String = "",
     @SerialName("published_at") val publishedAt: String? = null,
-    val body: String? = null,
     val assets: List<AssetDto> = emptyList()
 )
 
 @Serializable
-private data class StoredDetails(val notes: String, val publishedAt: String? = null, val sizes: Map<String, Long> = emptyMap())
+private data class StoredDetails(val publishedAt: String? = null, val sizes: Map<String, Long> = emptyMap())
 
 /** The rules a release and its app.json must pass; each one a plain function, tested alone. */
 object CatalogRules {
-    const val MAX_NOTES = 20_000
     const val MAX_PACKAGE = 255
     const val MAX_LABEL = 60
     const val MAX_DESCRIPTION = 300
@@ -251,27 +247,6 @@ object CatalogRules {
         return keys["en-us"]?.let { descriptions.getValue(it) } ?: ""
     }
 
-    /**
-     * A release's text as plain text: line ends as '\n', control characters (but '\n' and '\t') and the bidirectional overrides
-     * dropped, cut to [max] characters without splitting a pair. The same filter as ApkInfoCodec.clean (this app's install kit,
-     * from App Manager), keeping the line ends a body needs.
-     */
-    fun plainText(text: String, max: Int): String {
-        val source = text.replace("\r\n", "\n").replace('\r', '\n').trim()
-        val out = StringBuilder()
-        var count = 0
-        var i = 0
-        while (i < source.length && count < max) {
-            val cp = source.codePointAt(i)
-            i += Character.charCount(cp)
-            val bidi = cp in 0x202A..0x202E || cp in 0x2066..0x2069 || cp == 0x200E || cp == 0x200F || cp == 0x061C
-            if (bidi || (Character.isISOControl(cp) && cp != '\n'.code && cp != '\t'.code)) continue
-            out.appendCodePoint(cp)
-            count++
-        }
-        return out.toString().trim()
-    }
-
     internal fun parseRepos(text: String): List<String>? = parseRepoList(text)?.map { it.name }
 
     /**
@@ -292,7 +267,7 @@ object CatalogRules {
         }.map { RepoInfo(it.name, ApkInfoCodec.clean(it.description.orEmpty(), MAX_DESCRIPTION)) }
     }
 
-    /** The notes, date and file sizes of the release answered for [tag] (GitHub's get a release by tag name), or null when it is not that release. */
+    /** The date and file sizes of the release answered for [tag] (GitHub's get a release by tag name), or null when it is not that release. */
     internal fun parseDetails(text: String, tag: String): ReleaseDetails? {
         val release = try {
             json.decodeFromString<ReleaseDto>(text)
@@ -303,7 +278,6 @@ object CatalogRules {
         }
         if (release.tagName != tag) return null
         return ReleaseDetails(
-            notes = plainText(release.body.orEmpty(), MAX_NOTES),
             publishedAt = release.publishedAt?.let(::instant),
             sizes = release.assets.filter { it.size > 0 && it.name.length in 1..255 }.associate { it.name to it.size }
         )
@@ -311,7 +285,7 @@ object CatalogRules {
 
     /** [details] as the text kept on disk, and back: [parseStored] answers null for a text that is not one. */
     internal fun storeDetails(details: ReleaseDetails): String =
-        json.encodeToString(StoredDetails(details.notes, details.publishedAt?.toString(), details.sizes))
+        json.encodeToString(StoredDetails(details.publishedAt?.toString(), details.sizes))
 
     internal fun parseStored(text: String): ReleaseDetails? {
         val stored = try {
@@ -321,7 +295,7 @@ object CatalogRules {
         } catch (e: IllegalArgumentException) {
             return null
         }
-        return ReleaseDetails(plainText(stored.notes, MAX_NOTES), stored.publishedAt?.let(::instant), stored.sizes.filterValues { it > 0 })
+        return ReleaseDetails(stored.publishedAt?.let(::instant), stored.sizes.filterValues { it > 0 })
     }
 
     private fun instant(text: String): Instant? = try { Instant.parse(text) } catch (e: DateTimeParseException) { null }
@@ -345,8 +319,8 @@ fun phoneAbis(): List<String> = Build.SUPPORTED_ABIS.toList()
 
 class Catalog(
     private val source: ReleaseSource,
-    /** Where the notes of a tag are kept for good (one file per tag); null keeps none. */
-    private val notesDir: File? = null,
+    /** Where the date and sizes of a tag are kept for good (one file per tag); null keeps none. */
+    private val detailsDir: File? = null,
     private val locales: () -> List<String> = ::phoneLocaleTags,
     private val abis: () -> List<String> = ::phoneAbis,
     /** Debug builds only (AppModule): entries a test puts beside the live list, see [Seeded]. Empty in the release build. */
@@ -419,11 +393,11 @@ class Catalog(
     }
 
     /**
-     * The notes, date and sizes of the release [entry] comes from: kept on disk once read, for good (a tag's notes do not change),
+     * The date and sizes of the release [entry] comes from: kept on disk once read, for good (a tag's files do not change),
      * else asked of GitHub's API once. Null when they cannot be read now. Blocking: off the main thread.
      */
     fun details(entry: StoreEntry): ReleaseDetails? {
-        val file = notesDir?.let { File(it, ApkInfoCodec.sha256Hex("${entry.repo}/${entry.tag}".toByteArray()) + ".json") }
+        val file = detailsDir?.let { File(it, ApkInfoCodec.sha256Hex("${entry.repo}/${entry.tag}".toByteArray()) + ".json") }
         if (file != null && file.isFile && file.length() <= ReleaseNet.MAX_JSON) {
             runCatching { file.readText() }.getOrNull()?.let(CatalogRules::parseStored)?.let { return it }
         }

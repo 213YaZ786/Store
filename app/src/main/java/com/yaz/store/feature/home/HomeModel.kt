@@ -14,7 +14,7 @@ import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.InstallJob
 
 /**
- * The key of a release's notes, date and sizes: its repo and its tag, so a new release never shows the old one's notes
+ * The key of a release's date and sizes: its repo and its tag, so a new release never shows the old one's size
  * (a Kotlin extension property, https://kotlinlang.org/docs/extensions.html#extension-properties).
  */
 val StoreEntry.detailsKey: String get() = "$repo/$tag"

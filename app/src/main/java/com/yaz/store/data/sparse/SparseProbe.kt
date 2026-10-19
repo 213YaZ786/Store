@@ -1,7 +1,7 @@
 package com.yaz.store.data.sparse
 
 // What a release APK with no app.json says, read once by ranges and kept per repo, tag and file in the cache folder (a tag's files do not change),
-// as Catalog.details keeps a tag's notes for good (data/catalog/Catalog.kt) and IconStore keeps a tag's icon (data/catalog/IconStore.kt).
+// as Catalog.details keeps a tag's date and sizes for good (data/catalog/Catalog.kt) and IconStore keeps a tag's icon (data/catalog/IconStore.kt).
 // The file is a small JSON written with kotlinx.serialization (https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/json.md) and
 // read back through the same rules as the inspector's answer (SparseWire): a package by Android's rule, a version, texts cleaned and capped.
 import com.yaz.store.core.apk.ApkInfoCodec

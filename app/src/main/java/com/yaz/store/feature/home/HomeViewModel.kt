@@ -34,7 +34,7 @@ data class HomeState(
     val error: CatalogError? = null,
     /** The repos come from the list kept at the last opening (GitHub's limit reached, or offline). */
     val listCached: Boolean = false,
-    /** The release notes, date and sizes by [detailsKey] (repo and tag), read once per tag. */
+    /** The date and sizes of a release by [detailsKey] (repo and tag), read once per tag. */
     val details: Map<String, ReleaseDetails> = emptyMap(),
     /** The install queue: what each entry that was queued is doing now. */
     val jobs: List<InstallJob> = emptyList()
@@ -93,15 +93,15 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog, 
             val result = catalog.load()
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }
             mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached) }
-            // The notes come from GitHub's API, so only for an app with an update; a tag read once is kept for good.
-            val notes = withContext(Dispatchers.IO) {
+            // The sizes come from GitHub's API only (app.json has none), so only for an app with an update; a tag read once is kept for good.
+            val sizes = withContext(Dispatchers.IO) {
                 statuses.filter { it.state == AppState.UPDATE }.mapNotNull { s -> catalog.details(s.entry)?.let { s.entry.detailsKey to it } }.toMap()
             }
-            mutable.update { it.copy(details = it.details + notes) }
+            mutable.update { it.copy(details = it.details + sizes) }
         }
     }
 
-    // The app page asks for the notes, date and sizes of one release, whatever its state: Catalog.details keeps a tag for good,
+    // The app page asks for the date and sizes of one release, whatever its state: Catalog.details keeps a tag for good,
     // so opening the page again costs nothing. Pattern: Files' ArchiveViewModel, which launches such work in viewModelScope on Dispatchers.IO
     // (YAZ/Files at HEAD, feature/archive/ArchiveViewModel.kt; https://developer.android.com/topic/libraries/architecture/viewmodel).
     fun ensureDetails(entry: StoreEntry) {

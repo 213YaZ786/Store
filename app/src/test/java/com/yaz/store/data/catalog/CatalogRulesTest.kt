@@ -207,30 +207,14 @@ class CatalogRulesTest {
         assertEquals("English", CatalogRules.pickDescription(mapOf("EN-us" to "English"), listOf("de")))
     }
 
-    // Plain text
+    // The date and sizes of a tag (JUnit 4, https://github.com/junit-team/junit4/wiki/Assertions; the answer of
+    // https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name). A body in the answer is ignored.
+    private fun release(tag: String = "v1.0.0", published: String = "2026-10-18T10:00:00Z") =
+        """{"tag_name":"$tag","published_at":"$published","body":"Fixes","assets":[{"name":"A-1.apk","size":1234},{"name":"SHA256SUMS.txt","size":0},{"name":"","size":5}]}"""
 
     @Test
-    fun `a release body becomes plain text`() {
-        assertEquals("a\nb\nc\td", CatalogRules.plainText("a\r\nb\rc\td\u0000\u0007", 100))
-        assertEquals("ab", CatalogRules.plainText("a‮b⁦", 100))
-        assertEquals("", CatalogRules.plainText("  \u0000 ", 100))
-    }
-
-    @Test
-    fun `a release body is cut without splitting a pair`() {
-        assertEquals("a😀", CatalogRules.plainText("a😀b", 2))
-        assertEquals(20_000, CatalogRules.plainText("x".repeat(5_000_000), CatalogRules.MAX_NOTES).length)
-    }
-
-    // The notes of a tag (JUnit 4, https://github.com/junit-team/junit4/wiki/Assertions; the answer of
-    // https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name).
-    private fun release(tag: String = "v1.0.0", body: String = "Fixes", published: String = "2026-10-18T10:00:00Z") =
-        """{"tag_name":"$tag","published_at":"$published","body":"$body","assets":[{"name":"A-1.apk","size":1234},{"name":"SHA256SUMS.txt","size":0},{"name":"","size":5}]}"""
-
-    @Test
-    fun `the notes, date and sizes of a tag are read`() {
-        val details = CatalogRules.parseDetails(release(body = "Fixes\\r\\nMore\\u0000"), "v1.0.0")!!
-        assertEquals("Fixes\nMore", details.notes)
+    fun `the date and sizes of a tag are read`() {
+        val details = CatalogRules.parseDetails(release(), "v1.0.0")!!
         assertEquals(java.time.Instant.parse("2026-10-18T10:00:00Z"), details.publishedAt)
         assertEquals(mapOf("A-1.apk" to 1234L), details.sizes)
     }
@@ -241,16 +225,17 @@ class CatalogRulesTest {
         assertNull(CatalogRules.parseDetails("<html>", "v1.0.0"))
         assertNull(CatalogRules.parseDetails("[]", "v1.0.0"))
         assertNull(CatalogRules.parseDetails(release(published = "yesterday"), "v1.0.0")!!.publishedAt)
-        assertEquals("", CatalogRules.parseDetails("""{"tag_name":"v1","body":null}""", "v1")!!.notes)
+        assertEquals(emptyMap<String, Long>(), CatalogRules.parseDetails("""{"tag_name":"v1","body":null}""", "v1")!!.sizes)
     }
 
     @Test
-    fun `stored notes read back as they were written`() {
-        val details = ReleaseDetails("Fixes\nMore", java.time.Instant.parse("2026-10-18T10:00:00Z"), mapOf("A-1.apk" to 1234L))
+    fun `stored details read back as they were written`() {
+        val details = ReleaseDetails(java.time.Instant.parse("2026-10-18T10:00:00Z"), mapOf("A-1.apk" to 1234L))
         assertEquals(details, CatalogRules.parseStored(CatalogRules.storeDetails(details)))
-        assertEquals(ReleaseDetails("", null, emptyMap()), CatalogRules.parseStored(CatalogRules.storeDetails(ReleaseDetails("", null, emptyMap()))))
+        assertEquals(ReleaseDetails(null, emptyMap()), CatalogRules.parseStored(CatalogRules.storeDetails(ReleaseDetails(null, emptyMap()))))
+        // A file kept by an earlier build still carries its notes: they are ignored.
+        assertEquals(details, CatalogRules.parseStored("""{"notes":"old","publishedAt":"2026-10-18T10:00:00Z","sizes":{"A-1.apk":1234}}"""))
         assertNull(CatalogRules.parseStored("not json"))
-        assertNull(CatalogRules.parseStored("{}"))
     }
 
     // Repo list

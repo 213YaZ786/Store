@@ -80,7 +80,8 @@ class HomeContentTest {
         compose.onNodeWithText("Installed").assertIsDisplayed()
         compose.onNodeWithText("Available").assertIsDisplayed()
         assertEquals(0, compose.onAllNodesWithText("YAZ", substring = true).fetchSemanticsNodes().size)
-        assertEquals(0, compose.onAllNodesWithText("More", substring = false).fetchSemanticsNodes().size)
+        // "More" only on the rows of the Updates zone.
+        assertEquals(HomeModel.updates(state.apps).size, compose.onAllNodesWithText("More", substring = false).fetchSemanticsNodes().size)
         val installed = HomeModel.sorted(HomeModel.installed(state.apps))
         assertEquals(listOf("Calculator", "Contacts", "Dialer", "MTGA", "Mushaf", "SMS"), installed.map { it.entry.label })
         val available = HomeModel.sorted(HomeModel.available(state.apps))
@@ -88,13 +89,14 @@ class HomeContentTest {
     }
 
     @Test
-    fun `the updates zone has update all with the total size, one row per app with its versions and notes`() {
+    fun `the updates zone has update all with the total size, one line per app with its versions, More and Update`() {
         var all = 0
         val updated = mutableListOf<String>()
+        val pages = mutableListOf<String>()
         compose.setContent {
             HomeContent(
                 HomeState(loaded = true, apps = listOf(calculator, dialer), details = Fixtures.details), onRetry = {},
-                onInstall = { updated += it.entry.repo }, onUpdateAll = { all++ }
+                onInstall = { updated += it.entry.repo }, onUpdateAll = { all++ }, onPage = { pages += it.entry.repo }
             )
         }
         compose.onNodeWithText("Updates").assertIsDisplayed()
@@ -104,20 +106,14 @@ class HomeContentTest {
         compose.onNodeWithText("Update all · 4.2 MB").performClick()
         assertEquals(1, all)
         compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").assertIsDisplayed()
-        compose.onNodeWithText("Android will ask once").assertIsDisplayed()
+        compose.onNodeWithText("Android will ask once").assertDoesNotExist()
+        compose.onNodeWithText("What's new").assertDoesNotExist()
         // The row's own Update (the list row below has one too).
         compose.onAllNodesWithTextCount("Update", 2)
         assertEquals(emptyList<String>(), updated)
-    }
-
-    @Test
-    fun `the notes are cut to three lines and More opens them in place`() {
-        compose.setContent { HomeContent(HomeState(loaded = true, apps = listOf(calculator), details = Fixtures.details), onRetry = {}) }
-        compose.onNodeWithText("More").assertIsDisplayed()
+        // "More" opens the app's page; so does the row.
         compose.onNodeWithText("More").performClick()
-        compose.onNodeWithText("Less").assertIsDisplayed()
-        compose.onNodeWithText("Less").performClick()
-        compose.onNodeWithText("More").assertIsDisplayed()
+        assertEquals(listOf("Calculator"), pages)
     }
 
     @Test
