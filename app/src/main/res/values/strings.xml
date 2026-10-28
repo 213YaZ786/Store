@@ -10,15 +10,16 @@
     <string name="cancel_all">Cancel all</string>
     <string name="updates_title">Updates</string>
     <string name="update_all">Update all</string>
-    <string name="update_all_size">Update all · %1$s</string>
+    <!-- Parts joined with a comma, as AOSP Dialer's CallLogEntryText.java (https://android.googlesource.com/platform/packages/apps/Dialer/+/refs/heads/main/java/com/android/dialer/calllogutils/CallLogEntryText.java). -->
+    <string name="update_all_size">Update all, %1$s</string>
     <string name="installed_title">Installed</string>
     <string name="available_title">Available</string>
     <string name="up_to_date">Up to date</string>
     <string name="versions_move">%1$s → %2$s</string>
-    <string name="versions_move_size">%1$s → %2$s · %3$s</string>
+    <string name="versions_move_size">%1$s → %2$s, %3$s</string>
     <string name="own_title">Update available</string>
     <string name="own_versions">Store %1$s → %2$s</string>
-    <string name="own_versions_size">Store %1$s → %2$s · %3$s</string>
+    <string name="own_versions_size">Store %1$s → %2$s, %3$s</string>
     <string name="own_later">Later</string>
     <string name="empty_title">Store</string>
     <string name="empty_none">No app to list yet.</string>

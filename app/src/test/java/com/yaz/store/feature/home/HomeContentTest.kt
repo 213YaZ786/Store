@@ -105,16 +105,16 @@ class HomeContentTest {
         // The count beside the title replaces "Up to date".
         compose.onNodeWithText("1 update").assertIsDisplayed()
         compose.onNodeWithText("Up to date").assertDoesNotExist()
-        compose.onNodeWithText("Update all · 4.2 MB").performClick()
+        compose.onNodeWithText("Update all, 4.2 MB").performClick()
         assertEquals(1, all)
-        compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").assertIsDisplayed()
+        compose.onNodeWithText("0.3.5 → 0.3.6, 4.2 MB").assertIsDisplayed()
         compose.onNodeWithText("Android will ask once").assertDoesNotExist()
         compose.onNodeWithText("What's new").assertDoesNotExist()
         // The row's own Update (the list row below has one too).
         compose.onAllNodesWithTextCount("Update", 2)
         assertEquals(emptyList<String>(), updated)
         // The row opens the app's page.
-        compose.onNodeWithText("0.3.5 → 0.3.6 · 4.2 MB").performClick()
+        compose.onNodeWithText("0.3.5 → 0.3.6, 4.2 MB").performClick()
         assertEquals(listOf("Calculator"), pages)
     }
 
@@ -240,7 +240,7 @@ class HomeContentTest {
         var state by mutableStateOf(HomeState(loaded = true, apps = listOf(dialer), own = offer, details = details))
         compose.setContent { HomeContent(state, onRetry = {}, onOwnUpdate = { updated++ }, onOwnLater = { later++; state = state.copy(ownLater = true) }) }
         compose.onNodeWithText("Update available").assertIsDisplayed()
-        compose.onNodeWithText("Store 0.1.0 → 0.1.1 · 4.2 MB").assertIsDisplayed()
+        compose.onNodeWithText("Store 0.1.0 → 0.1.1, 4.2 MB").assertIsDisplayed()
         compose.onNodeWithText("Update").performClick()
         assertEquals(1, updated)
         compose.onNodeWithText("Later").performClick()
