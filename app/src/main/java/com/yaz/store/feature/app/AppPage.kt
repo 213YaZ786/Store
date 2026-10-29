@@ -74,8 +74,10 @@ fun AppPageContent(
     val context = LocalContext.current
     val entry = status.entry
     val busy = job != null && job.step.active
+    val pageScroll = rememberScrollState()
     FloatingFrame(
         bottom = navigationBarBottom(),
+        scroll = pageScroll,
         top = { FloatingTop(entry.label, leading = { FloatingAction(AppIcons.ArrowBack, stringResource(R.string.back), onBack) }) }
     ) { padding ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -83,7 +85,7 @@ fun AppPageContent(
                 Modifier
                     .widthIn(max = 720.dp)
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(pageScroll)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {

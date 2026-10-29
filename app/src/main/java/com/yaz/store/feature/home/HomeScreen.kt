@@ -177,8 +177,10 @@ fun HomeContent(
     val empty = state.apps.isEmpty() && orphans.isEmpty()
     val error = state.error
 
+    val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
     FloatingFrame(
         bottom = navigationBarBottom(),
+        scroll = homeList,
         top = {
             FloatingTop(
                 title = null,
@@ -224,7 +226,7 @@ fun HomeContent(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
                         val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
-                        HomeList(listState, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen)
+                        HomeList(listState, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen, homeList)
                     }
                 }
             }
@@ -242,7 +244,8 @@ private fun HomeList(
     onUpdateAll: () -> Unit,
     onCancelAll: () -> Unit,
     onRetry: () -> Unit,
-    seen: MutableSet<String>
+    seen: MutableSet<String>,
+    scrollState: androidx.compose.foundation.lazy.LazyListState
 ) {
     val context = LocalContext.current
     val error = state.error
@@ -252,6 +255,7 @@ private fun HomeList(
     // The banner and every zone keep 12 dp of their own on the side (ScreenBanner), the lists the same.
     val side = Modifier.padding(horizontal = 12.dp)
     LazyColumn(
+        state = scrollState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)

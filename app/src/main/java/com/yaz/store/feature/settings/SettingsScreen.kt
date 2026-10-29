@@ -110,14 +110,16 @@ fun SettingsContent(
     val uriHandler = LocalUriHandler.current
     var dialog by rememberSaveable { mutableStateOf(OpenDialog.NONE) }
 
+    val pageScroll = rememberScrollState()
     FloatingFrame(
         bottom = 0.dp,
+        scroll = pageScroll,
         top = { FloatingTop(stringResource(R.string.settings), leading = { FloatingAction(AppIcons.ArrowBack, stringResource(R.string.back), onBack) }) }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(pageScroll)
                 .padding(horizontal = LocalReadableInset.current)
         ) {
             Spacer(Modifier.height(padding.calculateTopPadding()))
