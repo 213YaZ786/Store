@@ -51,23 +51,30 @@ object InstallServicePlan {
 class NoticeText(val title: String, val text: String, val percent: Int?)
 
 object InstallNotice {
-    /** The entry the notification is about: the one that runs, else the first that waits; null when none is active. */
-    fun current(jobs: List<InstallJob>): InstallJob? =
-        jobs.firstOrNull { it.step.active && it.step != JobStep.QUEUED } ?: jobs.firstOrNull { it.step.active }
+    private fun installing(job: InstallJob) = job.step == JobStep.INSTALLING || job.step == JobStep.CONFIRM
 
+    /** The entry that Cancel is about: the one installing, else the first that downloads or waits; null when none is active. */
+    fun current(jobs: List<InstallJob>): InstallJob? =
+        jobs.firstOrNull { it.step.active && installing(it) } ?: jobs.firstOrNull { it.step.active }
+
+    // One notification for all the entries, as GrapheneOS' App Store has: a title that counts what downloads and a text with the names of
+    // the apps joined by ", ", no bar per app (PackageDownloadFgService.createNotification, MIT,
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/PackageDownloadFgService.kt).
+    // Changes: the title names the one installing, the percent is the mean of the downloads (GrapheneOS shows none).
     fun describe(jobs: List<InstallJob>): NoticeText? {
-        val job = current(jobs) ?: return null
-        val others = jobs.count { it.step.active } - 1
-        val step = when (job.step) {
-            JobStep.QUEUED -> "Waiting"
-            JobStep.DOWNLOADING -> "Downloading"
-            JobStep.CHECKING -> "Checking"
-            JobStep.INSTALLING -> "Installing"
-            JobStep.CONFIRM -> "Waiting for your confirmation"
-            else -> ""
+        val active = jobs.filter { it.step.active }
+        if (active.isEmpty()) return null
+        val installing = active.firstOrNull { installing(it) }
+        val downloading = active.filter { !installing(it) }
+        val percent = if (downloading.isEmpty()) null else (downloading.sumOf { it.progress.toDouble() } / downloading.size * 100).toInt().coerceIn(0, 100)
+        val names = downloading.joinToString(", ") { it.entry.label }
+        if (installing != null) {
+            val text = if (installing.step == JobStep.CONFIRM) "Waiting for your confirmation" else names
+            return NoticeText("Installing ${installing.entry.label}", text, percent)
         }
-        val text = if (others > 0) "$step, $others more waiting" else step
-        return NoticeText(job.entry.label, text, if (job.step == JobStep.DOWNLOADING) (job.progress * 100).toInt().coerceIn(0, 100) else null)
+        val verb = if (downloading.all { it.step == JobStep.CHECKING }) "Checking" else "Downloading"
+        return if (downloading.size == 1) NoticeText("$verb ${downloading.single().entry.label}", "", percent)
+        else NoticeText("$verb ${downloading.size} apps", names, percent)
     }
 }
 

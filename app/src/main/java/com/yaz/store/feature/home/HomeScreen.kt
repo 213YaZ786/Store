@@ -16,8 +16,12 @@ package com.yaz.store.feature.home
 //   (https://android.googlesource.com/platform/development/+/refs/heads/main/samples/ApiDemos/src/com/example/android/apis/content/InstallApkSessionApi.java).
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -143,9 +147,24 @@ fun ConfirmWhileInFront(jobs: List<InstallJob>) {
     }
 }
 
-/** Starts the app's launcher activity (PackageManager.getLaunchIntentForPackage, https://developer.android.com/reference/android/content/pm/PackageManager#getLaunchIntentForPackage(java.lang.String)). */
+/**
+ * Starts the app's launcher activity (PackageManager.getLaunchIntentForPackage,
+ * https://developer.android.com/reference/android/content/pm/PackageManager#getLaunchIntentForPackage(java.lang.String)). An app with no
+ * launcher entry (Keyboard hides its icon by default) opens as Android's Settings opens a keyboard: its InputMethodInfo's settings
+ * activity with ACTION_MAIN (AOSP SettingsLib InputMethodPreference,
+ * https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/packages/SettingsLib/src/com/android/settingslib/inputmethod/InputMethodPreference.java);
+ * anything else, its App info page (Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+ * https://developer.android.com/reference/android/provider/Settings#ACTION_APPLICATION_DETAILS_SETTINGS).
+ */
 fun openApp(context: Context, status: AppStatus) {
-    context.packageManager.getLaunchIntentForPackage(status.entry.packageName)?.let { runCatching { context.startActivity(it) } }
+    val name = status.entry.packageName
+    val keyboard = context.getSystemService(InputMethodManager::class.java)?.inputMethodList
+        ?.firstOrNull { it.packageName == name && !it.settingsActivity.isNullOrEmpty() }
+        ?.let { Intent(Intent.ACTION_MAIN).setClassName(name, it.settingsActivity) }
+    val intent = context.packageManager.getLaunchIntentForPackage(name)
+        ?: keyboard
+        ?: Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", name, null))
+    runCatching { context.startActivity(intent) }
 }
 
 /** The screen for a state: stateless, so a test can draw it with fixed data. */

@@ -22,22 +22,48 @@ class InstallServicePlanTest {
         assertEquals(ServiceStep.KEEP, InstallServicePlan.next(0, serviceUp = false))
     }
 
+    // The notification's cases follow GrapheneOS' PackageDownloadFgService.createNotification (MIT, https://github.com/GrapheneOS/AppStore,
+    // app/src/main/java/app/grapheneos/apps/PackageDownloadFgService.kt): one notification for all the downloads, the names joined by ", ".
     @Test
-    fun `the notification is about the entry that runs, with its percent only while it downloads`() {
-        val jobs = listOf(job("Beta", JobStep.QUEUED), job("Alpha", JobStep.DOWNLOADING, 0.376f), job("Done", JobStep.DONE))
+    fun `several downloads make one notification, the apps counted and named, the percent their mean`() {
+        val jobs = listOf(
+            job("Beta", JobStep.DOWNLOADING, 0.25f), job("Alpha", JobStep.DOWNLOADING, 0.5f), job("Gamma", JobStep.QUEUED), job("Done", JobStep.DONE)
+        )
         val text = InstallNotice.describe(jobs)!!
-        assertEquals("Alpha", text.title)
-        assertEquals("Downloading, 1 more waiting", text.text)
-        assertEquals(37, text.percent)
-        assertNull(InstallNotice.describe(listOf(job("Alpha", JobStep.INSTALLING)))!!.percent)
+        assertEquals("Downloading 3 apps", text.title)
+        assertEquals("Beta, Alpha, Gamma", text.text)
+        assertEquals(25, text.percent)
     }
 
     @Test
-    fun `each step has its words and nothing active gives no notification`() {
-        assertEquals("Checking", InstallNotice.describe(listOf(job("A", JobStep.CHECKING)))!!.text)
-        assertEquals("Installing", InstallNotice.describe(listOf(job("A", JobStep.INSTALLING)))!!.text)
+    fun `one download is named in the title`() {
+        val text = InstallNotice.describe(listOf(job("Alpha", JobStep.DOWNLOADING, 0.376f)))!!
+        assertEquals("Downloading Alpha", text.title)
+        assertEquals("", text.text)
+        assertEquals(37, text.percent)
+        assertEquals("Checking Alpha", InstallNotice.describe(listOf(job("Alpha", JobStep.CHECKING, 1f)))!!.title)
+        assertEquals("Checking 2 apps", InstallNotice.describe(listOf(job("A", JobStep.CHECKING, 1f), job("B", JobStep.CHECKING, 1f)))!!.title)
+    }
+
+    @Test
+    fun `the app installing is the title, the others still downloading are the text`() {
+        val jobs = listOf(job("Beta", JobStep.DOWNLOADING, 0.5f), job("Alpha", JobStep.INSTALLING), job("Gamma", JobStep.CHECKING, 1f))
+        val text = InstallNotice.describe(jobs)!!
+        assertEquals("Installing Alpha", text.title)
+        assertEquals("Beta, Gamma", text.text)
+        assertEquals(75, text.percent)
+        assertNull(InstallNotice.describe(listOf(job("Alpha", JobStep.INSTALLING)))!!.percent)
         assertEquals("Waiting for your confirmation", InstallNotice.describe(listOf(job("A", JobStep.CONFIRM)))!!.text)
-        assertEquals("Waiting", InstallNotice.describe(listOf(job("A", JobStep.QUEUED)))!!.text)
+        assertEquals("Installing A", InstallNotice.describe(listOf(job("A", JobStep.CONFIRM)))!!.title)
+    }
+
+    @Test
+    fun `cancel targets the app installing, else the first downloading, and nothing active gives no notification`() {
+        val jobs = listOf(job("Beta", JobStep.DOWNLOADING), job("Alpha", JobStep.INSTALLING))
+        assertEquals("Alpha", InstallNotice.current(jobs)!!.entry.label)
+        assertEquals("Beta", InstallNotice.current(listOf(job("Beta", JobStep.DOWNLOADING), job("Gamma", JobStep.CHECKING)))!!.entry.label)
+        assertNull(InstallNotice.current(listOf(job("A", JobStep.DONE))))
+        assertEquals("Downloading A", InstallNotice.describe(listOf(job("A", JobStep.QUEUED)))!!.title)
         assertNull(InstallNotice.describe(listOf(job("A", JobStep.DONE), job("B", JobStep.FAILED))))
         assertNull(InstallNotice.describe(emptyList()))
     }

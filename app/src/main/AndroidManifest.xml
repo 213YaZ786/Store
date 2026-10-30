@@ -34,6 +34,11 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- Keyboards, which have no launcher entry: the same query HeliBoard made to see other input methods
+             (https://github.com/Helium314/HeliBoard/blob/main/app/src/main/AndroidManifest.xml, "To detect other IMEs"). -->
+        <intent>
+            <action android:name="android.view.InputMethod" />
+        </intent>
     </queries>
 
     <application

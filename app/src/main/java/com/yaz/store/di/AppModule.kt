@@ -67,6 +67,7 @@ val appModule = module {
             get<StoreBackend>(),
             File(app.cacheDir, DOWNLOADS),
             CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            ownPackage = BuildConfig.APPLICATION_ID,
             onQueued = { InstallService.onQueued(app) }
         )
     }

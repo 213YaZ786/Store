@@ -18,6 +18,8 @@ import java.io.File
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class StoreBackend(
     private val context: android.content.Context,
@@ -45,7 +47,10 @@ class StoreBackend(
         net.download(ReleaseNet.downloadUrl(repo, tag, apkName), into, onProgress, beforeRead)
     }
 
-    override suspend fun inspect(file: File): ApkInfo? = inspector.inspect(listOf(file)).single()
+    // Several entries are checked at once and the inspector binds its isolated service per call: one call at a time, and the door's staging
+    // (another StoreBackend, the same inspector) takes the same turn. Source: kotlinx.coroutines' Mutex, fair, withLock
+    // (https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/).
+    override suspend fun inspect(file: File): ApkInfo? = inspectLock.withLock { inspector.inspect(listOf(file)).single() }
 
     override fun installedSigners(packageName: String): Set<String>? = Installed.read(context, packageName)?.signers
 
@@ -61,4 +66,8 @@ class StoreBackend(
     }
 
     override fun cancelInstall() = installer.cancel()
+
+    private companion object {
+        val inspectLock = Mutex()
+    }
 }
