@@ -81,8 +81,6 @@ import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.ScreenBanner
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.navigationBarBottom
@@ -212,19 +210,9 @@ fun HomeContent(
         top = {
             FloatingTop(
                 title = null,
-                // The title and the state of the apps on one line (the status pill, HomeUpdates.kt).
+                // No title: only the state of the apps, centred (the user, 2026-10-30; the status pill, HomeUpdates.kt).
                 center = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // The title does nothing, so it is plain text on the page (the user, 2026-10-30), as FloatingTop's title.
-                        Text(
-                            stringResource(R.string.home_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.semantics { heading() }
-                        )
-                        StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen, showUpdates)
-                    }
+                    StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen, showUpdates)
                 },
                 trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) }
             )

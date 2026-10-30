@@ -87,6 +87,10 @@
     <string name="settings_version">Store %1$s</string>
     <string name="settings_source_code">Source code</string>
     <string name="settings_source_code_summary">github.com/213YaZ786/Store, GPL-3.0</string>
+    <string name="settings_version_summary">Installs and updates our apps from their GitHub releases.</string>
+    <string name="settings_license_mit">MIT</string>
+    <string name="settings_license_apache">Apache-2.0</string>
+    <string name="settings_license_gpl">GPL-3.0</string>
     <string name="settings_credit_grapheneos">GrapheneOS App Store</string>
     <string name="settings_credit_grapheneos_summary">Installer and update checks, MIT</string>
     <string name="settings_credit_komi">komi-store</string>
