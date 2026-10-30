@@ -113,11 +113,14 @@ private fun UpdateRow(status: AppStatus, job: InstallJob?, size: Long?, actions:
  * the wave starts. The count starts again after two seconds without a tap, as Android's version does.
  */
 @Composable
-internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Unit, seen: MutableSet<String>) {
+internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Unit, seen: MutableSet<String>, onShowUpdates: () -> Unit = {}) {
     if (updates > 0) {
-        FloatingPane(shape = CircleShape, modifier = Modifier.entrancePop(seen, "status")) {
+        // A capsule is always a tap (the user, 2026-10-30): the count leads to the Updates zone, as Google Play's "Updates available"
+        // leads to its list of updates; sinkClickable gives the haptic tick.
+        val count = pluralStringResource(R.plurals.notice_updates, updates, updates)
+        FloatingPane(shape = CircleShape, modifier = Modifier.entrancePop(seen, "status").sinkClickable(count, depth = 0.97f, onClick = onShowUpdates)) {
             Text(
-                pluralStringResource(R.plurals.notice_updates, updates, updates),
+                count,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,

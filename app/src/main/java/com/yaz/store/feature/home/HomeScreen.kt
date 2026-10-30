@@ -77,7 +77,9 @@ import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.ScreenBanner
-import com.yaz.store.ui.component.TitlePill
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.launch
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.navigationBarBottom
 import com.yaz.store.ui.component.rememberRefreshHaptics
@@ -178,6 +180,13 @@ fun HomeContent(
     val error = state.error
 
     val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
+    // "N updates" scrolls the list to the Updates zone, after the error banner and the orphan rows (HomeList's item order);
+    // the tap's haptic tick comes from StatusPill's sinkClickable.
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val showUpdates: () -> Unit = {
+        val index = (if (error != null) 1 else 0) + orphans.size
+        scope.launch { homeList.animateScrollToItem(index) }
+    }
     FloatingFrame(
         bottom = navigationBarBottom(),
         scroll = homeList,
@@ -187,8 +196,15 @@ fun HomeContent(
                 // The title and the state of the apps on one line (the status pill, HomeUpdates.kt).
                 center = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TitlePill(stringResource(R.string.home_title))
-                        StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen)
+                        // The title does nothing, so it is plain text on the page (the user, 2026-10-30), as FloatingTop's title.
+                        Text(
+                            stringResource(R.string.home_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.semantics { heading() }
+                        )
+                        StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen, showUpdates)
                     }
                 },
                 trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) }
