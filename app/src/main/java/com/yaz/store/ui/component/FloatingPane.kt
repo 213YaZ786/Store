@@ -64,6 +64,8 @@ import com.yaz.store.ui.glass.rememberGlassBackdrop
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -75,6 +77,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.yaz.store.ui.glass.LocalGlass
 import com.yaz.store.ui.glass.LocalGlassBackdrop
@@ -141,16 +144,22 @@ fun FloatingTop(
     ) {
         // Both action slots keep their room, so the name or the centre slot stays centred.
         Box(Modifier.size(TopActionSize), contentAlignment = Alignment.Center) { leading?.invoke() }
-        // A gap on each side: a long name ends in "…" before reaching the round actions.
+        // A gap on each side; a long name wraps between words on two lines (the row grows, it has a
+        // minimum height only), and a word too wide for the room shrinks as the last resort: Compose's
+        // TextAutoSize.StepBased (https://developer.android.com/develop/ui/compose/text/autosize).
         Box(Modifier.weight(1f).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
             when {
                 center != null -> center()
-                title != null -> Text(
+                title != null -> BasicText(
                     title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
+                    style = MaterialTheme.typography.headlineSmall.copy(color = LocalContentColor.current, textAlign = TextAlign.Center),
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 12.sp,
+                        maxFontSize = MaterialTheme.typography.headlineSmall.fontSize,
+                        stepSize = 0.5.sp
+                    ),
                     modifier = if (collapse == null) Modifier.semantics { heading() }
                     else Modifier
                         .graphicsLayer { alpha = ((collapse() - 0.5f) * 2f).coerceIn(0f, 1f) }
@@ -166,11 +175,14 @@ fun FloatingTop(
 @Composable
 fun TitlePill(title: String) {
     FloatingPane(shape = CircleShape) {
-        Text(
+        // Wraps between words on two lines, a word too wide shrinks last (TextAutoSize.StepBased).
+        val style = MaterialTheme.typography.titleMedium
+        BasicText(
             title,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 1,
+            style = style.copy(color = LocalContentColor.current),
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = style.fontSize, stepSize = 0.5.sp),
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
         )
     }
