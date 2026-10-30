@@ -17,12 +17,22 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +70,7 @@ import kotlin.math.hypot
 internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier = Modifier) {
     val glass = LocalGlass.current
     if (glass == null) {
-        BoldButton(onClick = onClick, modifier = modifier, filled = true) { Text(label, maxLines = 1) }
+        BoldButton(onClick = onClick, modifier = modifier, filled = true) { UpdateLabel(label, Color.Unspecified) }
         return
     }
     // The theme's error colour; by night its deep container, since the night's error is a pale pink that does not read as red glass.
@@ -98,7 +108,67 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
                         clipPath(path) { drawGlint(sparkle, p) }
                     }
                 }
-        ) { Text(label, color = onRed, maxLines = 1, overflow = TextOverflow.Clip) }
+        ) { UpdateLabel(label, onRed) }
+    }
+}
+
+/**
+ * The label wraps between words. Beside another button (a [TwoActions] pair) it is drawn at the one size the pair
+ * computed ([LocalGroupFontSize]); alone, a single word still too wide for the button shrinks as the last resort:
+ * Compose's TextAutoSize.StepBased (https://developer.android.com/develop/ui/compose/text/autosize), as SMS's PersonActionTile.
+ */
+@Composable
+private fun UpdateLabel(label: String, color: Color) {
+    val group = LocalGroupFontSize.current
+    if (group.isSpecified) {
+        Text(label, color = color, textAlign = TextAlign.Center, fontSize = group)
+        return
+    }
+    val size = MaterialTheme.typography.labelLarge.fontSize
+    Text(
+        label,
+        color = color,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = size, stepSize = 0.5.sp)
+    )
+}
+
+/** The size a [TwoActions] pair computed for both labels; unspecified outside a pair. */
+internal val LocalGroupFontSize = compositionLocalOf { TextUnit.Unspecified }
+
+/** The label of a button of a [TwoActions] pair: wraps between words, at the pair's one size. */
+@Composable
+internal fun GroupLabel(text: String) {
+    Text(text, textAlign = TextAlign.Center, fontSize = LocalGroupFontSize.current)
+}
+
+/**
+ * One text size for all the labels of a group, computed once: the largest size from the style's down to [min], in
+ * 0.5 sp steps, at which the longest word of every label fits [textWidth]; the labels are then drawn at that size,
+ * wrapping between words, so no two read in two sizes (Material's type scale; Apple's Dynamic Type). The ladder is
+ * Compose's TextAutoSize.StepBased, asked of the whole group at once
+ * (https://github.com/androidx/androidx/blob/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/text/AutoSize.kt),
+ * the fit measured with TextMeasurer (https://developer.android.com/develop/ui/compose/text/measure-text-layout) as
+ * SMS's rememberGroupLabelSize does (https://github.com/213YaZ786/SMS, ui/component/GroupLabelSize.kt).
+ */
+@Composable
+internal fun rememberGroupFontSize(labels: List<String>, style: TextStyle, textWidth: Dp, min: TextUnit = 9.sp): TextUnit {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(labels, style, textWidth, min, density) {
+        val max = style.fontSize
+        val words = labels.flatMap { it.split(' ', '\n') }.filter { it.isNotEmpty() }.distinct()
+        if (!max.isSp || max.value <= min.value || words.isEmpty() || textWidth.value <= 0f) return@remember max
+        val limit = with(density) { textWidth.toPx() }
+        var size = max.value
+        while (size > min.value) {
+            val sized = style.copy(fontSize = size.sp)
+            if (words.all { measurer.measure(it, sized, softWrap = false, maxLines = 1).size.width <= limit }) return@remember size.sp
+            size -= 0.5f
+        }
+        min
     }
 }
 

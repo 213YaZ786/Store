@@ -46,8 +46,11 @@ import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.net.ReleaseNet
 import com.yaz.store.feature.home.AppIcon
 import com.yaz.store.feature.home.CardActions
+import com.yaz.store.feature.home.GroupLabel
 import com.yaz.store.feature.home.HomeModel
 import com.yaz.store.feature.home.StateButton
+import com.yaz.store.feature.home.TwoActions
+import androidx.compose.ui.text.style.TextAlign
 import com.yaz.store.feature.home.detailsKey
 import com.yaz.store.ui.component.BoldButton
 import com.yaz.store.ui.component.FloatingAction
@@ -103,18 +106,24 @@ fun AppPageContent(
                         val action = HomeModel.action(status)
                         val installed = status.installed != null && status.state != AppState.FOREIGN
                         if (action == HomeModel.Action.Open && !busy) {
-                            // Open and Uninstall side by side, as Google Play's header has them.
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                BoldButton(onClick = { actions.onOpen(status) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_open)) }
-                                BoldButton(onClick = { onUninstall(status) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_uninstall)) }
-                            }
+                            // Open and Uninstall side by side, as Google Play's header has them, stacked when the words do not fit.
+                            val open = stringResource(R.string.action_open)
+                            val uninstall = stringResource(R.string.action_uninstall)
+                            TwoActions(
+                                open, uninstall,
+                                first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it) { GroupLabel(open) } },
+                                second = { BoldButton(onClick = { onUninstall(status) }, modifier = it) { GroupLabel(uninstall) } }
+                            )
                         } else {
                             StateButton(status, job, actions, Modifier.fillMaxWidth())
                             if (installed && !busy) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    BoldButton(onClick = { actions.onOpen(status) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_open)) }
-                                    BoldButton(onClick = { onUninstall(status) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_uninstall)) }
-                                }
+                                val open = stringResource(R.string.action_open)
+                                val uninstall = stringResource(R.string.action_uninstall)
+                                TwoActions(
+                                    open, uninstall,
+                                    first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it) { GroupLabel(open) } },
+                                    second = { BoldButton(onClick = { onUninstall(status) }, modifier = it) { GroupLabel(uninstall) } }
+                                )
                             }
                         }
                     }
