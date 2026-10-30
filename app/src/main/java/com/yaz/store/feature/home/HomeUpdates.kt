@@ -104,13 +104,9 @@ internal fun UpdatesZone(
 @Composable
 private fun UpdateRow(status: AppStatus, job: InstallJob?, size: Long?, actions: CardActions) {
     val context = LocalContext.current
-    val moves = if (size != null) {
-        stringResource(R.string.versions_move_size, status.installed?.versionName ?: "", status.entry.versionName, Formatter.formatShortFileSize(context, size))
-    } else {
-        stringResource(R.string.versions_move, status.installed?.versionName ?: "", status.entry.versionName)
-    }
-    // One line: icon, name, the versions and size, then Update; the row itself opens the app's page.
-    AppRow(status, job, actions, subtitle = moves, version = null)
+    // Icon, name, its words and the size of the download, no version numbers (the user, 2026-10-30), then Update; the row itself
+    // opens the app's page.
+    AppRow(status, job, actions, subtitle = status.entry.description, size = size?.let { Formatter.formatShortFileSize(context, it) })
 }
 
 /**

@@ -42,12 +42,12 @@ class HomeContentTest {
     val compose = createComposeRule()
 
     @Test
-    fun `a row shows the name, the words, the version and the button of its state`() {
+    fun `a row shows the name, the words and the button of its state, no version`() {
         val state = HomeState(loaded = true, apps = listOf(dialer, files, Fixtures.mtga, Fixtures.keyboard, Fixtures.voice, Fixtures.sms2))
         compose.setContent { HomeContent(state, onRetry = {}) }
         compose.onNodeWithText("Dialer").assertIsDisplayed()
         compose.onNodeWithText("Phone calls, history and speed dial").assertIsDisplayed()
-        compose.onNodeWithText("0.14.20").assertIsDisplayed()
+        compose.onNodeWithText("0.14.20").assertDoesNotExist()
         compose.onNodeWithText("Open").assertIsDisplayed()
         compose.onNodeWithText("Install").assertIsDisplayed()
         compose.onNodeWithText("Hand over").assertIsDisplayed()
@@ -91,7 +91,7 @@ class HomeContentTest {
     }
 
     @Test
-    fun `the updates zone has update all with the total size, one line per app with its versions, More and Update`() {
+    fun `the updates zone has update all with the total size, one line per app with its size and Update`() {
         var all = 0
         val updated = mutableListOf<String>()
         val pages = mutableListOf<String>()
@@ -107,14 +107,16 @@ class HomeContentTest {
         compose.onNodeWithText("Up to date").assertDoesNotExist()
         compose.onNodeWithText("Update all, 4.2 MB").performClick()
         assertEquals(1, all)
-        compose.onNodeWithText("0.3.5 → 0.3.6, 4.2 MB").assertIsDisplayed()
+        // The size only, in the update's row and in the list's row; no version numbers.
+        compose.onAllNodesWithTextCount("4.2 MB", 2)
+        compose.onNodeWithText("0.3.5 → 0.3.6", substring = true).assertDoesNotExist()
         compose.onNodeWithText("Android will ask once").assertDoesNotExist()
         compose.onNodeWithText("What's new").assertDoesNotExist()
         // The row's own Update (the list row below has one too).
         compose.onAllNodesWithTextCount("Update", 2)
         assertEquals(emptyList<String>(), updated)
         // The row opens the app's page.
-        compose.onNodeWithText("0.3.5 → 0.3.6, 4.2 MB").performClick()
+        compose.onAllNodesWithText("4.2 MB")[0].performClick()
         assertEquals(listOf("Calculator"), pages)
     }
 

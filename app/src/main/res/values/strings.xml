@@ -15,8 +15,6 @@
     <string name="installed_title">Installed</string>
     <string name="available_title">Available</string>
     <string name="up_to_date">Up to date</string>
-    <string name="versions_move">%1$s → %2$s</string>
-    <string name="versions_move_size">%1$s → %2$s, %3$s</string>
     <string name="own_title">Update available</string>
     <string name="own_versions">Store %1$s → %2$s</string>
     <string name="own_versions_size">Store %1$s → %2$s, %3$s</string>

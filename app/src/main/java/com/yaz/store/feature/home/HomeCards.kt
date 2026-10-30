@@ -26,7 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.text.format.Formatter
 import androidx.compose.ui.platform.LocalContext
+import com.yaz.store.data.catalog.AppState
+import com.yaz.store.data.catalog.ReleaseDetails
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,8 +61,10 @@ internal fun AppList(
     jobs: List<InstallJob>,
     actions: CardActions,
     seen: MutableSet<String>,
+    details: Map<String, ReleaseDetails> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             stringResource(title),
@@ -76,7 +81,8 @@ internal fun AppList(
                         HomeModel.jobOf(status, jobs),
                         actions,
                         subtitle = status.entry.description,
-                        version = status.installed?.versionName ?: status.entry.versionName
+                        // No version numbers (the user, 2026-10-30): the size of the download, only when an update waits.
+                        size = if (status.state == AppState.UPDATE) HomeModel.sizeOf(status, details)?.let { Formatter.formatShortFileSize(context, it) } else null
                     )
                 }
             }
@@ -93,7 +99,7 @@ internal fun RowDivider() {
 }
 
 /**
- * One app: icon, name, a line of words, its version when given, the state button on the right; the whole row opens the app's page (a
+ * One app: icon, name, its words, the update's size when given, the state button on the right; the whole row opens the app's page (a
  * transparent tap target, no second zone). [below] sits under the row, aligned with the text; [beforeButton] sits just before the button.
  */
 @Composable
@@ -102,7 +108,7 @@ internal fun AppRow(
     job: InstallJob?,
     actions: CardActions,
     subtitle: String,
-    version: String?,
+    size: String?,
     below: (@Composable ColumnScope.() -> Unit)? = null,
     beforeButton: (@Composable () -> Unit)? = null
 ) {
@@ -116,24 +122,21 @@ internal fun AppRow(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             AppIcon(status, 56.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                // The name and its words wrap between words, never cut (containers with text are adaptive, 2026-10-30).
                 Text(
                     status.entry.label,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    fontWeight = FontWeight.SemiBold
                 )
                 if (subtitle.isNotEmpty()) {
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                if (version != null) {
-                    Text(version, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                if (size != null) {
+                    Text(size, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
             if (active) {

@@ -306,13 +306,13 @@ private fun HomeList(
             val both = installed.isNotEmpty() && available.isNotEmpty()
             if (wide && both) {
                 Row(side.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AppList(R.string.installed_title, installed, state.jobs, actions, seen, Modifier.weight(1f))
-                    AppList(R.string.available_title, available, state.jobs, actions, seen, Modifier.weight(1f))
+                    AppList(R.string.installed_title, installed, state.jobs, actions, seen, state.details, Modifier.weight(1f))
+                    AppList(R.string.available_title, available, state.jobs, actions, seen, state.details, Modifier.weight(1f))
                 }
             } else {
                 Column(side.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    if (installed.isNotEmpty()) AppList(R.string.installed_title, installed, state.jobs, actions, seen)
-                    if (available.isNotEmpty()) AppList(R.string.available_title, available, state.jobs, actions, seen)
+                    if (installed.isNotEmpty()) AppList(R.string.installed_title, installed, state.jobs, actions, seen, state.details)
+                    if (available.isNotEmpty()) AppList(R.string.available_title, available, state.jobs, actions, seen, state.details)
                 }
             }
         }
