@@ -17,8 +17,8 @@ android {
         applicationId = "com.yaz.store"
         minSdk = 31
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     signingConfigs {
