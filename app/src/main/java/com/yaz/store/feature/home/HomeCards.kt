@@ -18,10 +18,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import android.text.format.Formatter
 import androidx.compose.ui.platform.LocalContext
 import com.yaz.store.data.catalog.AppState
+import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.catalog.ReleaseDetails
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -72,7 +73,7 @@ internal fun AppList(
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, top = 6.dp)
         )
-        ZoneSurface(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().entrancePop(seen, "list/$title")) {
+        ZoneSurface(shape = ShapeDefaults.ExtraLarge, modifier = Modifier.fillMaxWidth().entrancePop(seen, "list/$title")) {
             Column {
                 HomeModel.sorted(apps).forEachIndexed { index, status ->
                     if (index > 0) RowDivider()
@@ -140,7 +141,7 @@ internal fun AppRow(
                 }
             }
             if (active) {
-                QuietButton(onClick = { actions.onCancel(status.entry.packageName) }) { Text(stringResource(R.string.cancel)) }
+                QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
             } else if (beforeButton != null) {
                 // The link and the button stay close, so the line of words keeps the room.
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -168,11 +169,15 @@ internal fun AppRow(
 @Composable
 internal fun ActionButton(status: AppStatus, actions: CardActions, modifier: Modifier = Modifier) {
     when (val action = HomeModel.action(status)) {
-        HomeModel.Action.Open -> BoldButton(onClick = { actions.onOpen(status) }, modifier = modifier) { Text(stringResource(R.string.action_open)) }
-        HomeModel.Action.Update -> UpdateButton(onClick = { actions.onPrimary(status) }, label = stringResource(R.string.action_update), modifier = modifier)
-        HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, filled = true) { Text(stringResource(R.string.action_install)) }
-        HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier) { Text(stringResource(R.string.action_hand_over)) }
-        is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = modifier.widthIn(max = 150.dp), enabled = false) {
+        // Store's own row, up to date: no Open (it would only reopen Store), as GrapheneOS' App Store hides it for itself
+        // (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/DetailsScreen.kt, UP_TO_DATE: pkgName != selfPkgName).
+        HomeModel.Action.Open -> if (!OwnUpdate.isOwn(status.entry.packageName)) {
+            BoldButton(onClick = { actions.onOpen(status) }, modifier = modifier, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_open)) }
+        }
+        HomeModel.Action.Update -> UpdateButton(onClick = { actions.onPrimary(status) }, label = stringResource(R.string.action_update), modifier = modifier, shape = ShapeDefaults.Large)
+        HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, filled = true, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_install)) }
+        HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_hand_over)) }
+        is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = modifier.widthIn(max = 150.dp), enabled = false, shape = ShapeDefaults.Large) {
             Text(
                 if (action.sdk > 0) stringResource(action.reason, HomeModel.androidName(action.sdk)) else stringResource(action.reason),
                 textAlign = TextAlign.Center,
@@ -192,7 +197,7 @@ internal fun StateButton(status: AppStatus, job: InstallJob?, actions: CardActio
     if (job != null && job.step.active) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Progress(job)
-            QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
+            QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, modifier = Modifier.fillMaxWidth(), shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
         }
         return
     }

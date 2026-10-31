@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.yaz.store.R
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
+import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.net.ReleaseNet
@@ -106,14 +108,16 @@ fun AppPageContent(
                         }
                         val action = HomeModel.action(status)
                         val installed = status.installed != null && status.state != AppState.FOREIGN
-                        if (action == HomeModel.Action.Open && !busy) {
+                        if (action == HomeModel.Action.Open && OwnUpdate.isOwn(entry.packageName) && !busy) {
+                            // Store's own page when up to date: nothing to open (it is open) and Store does not uninstall itself.
+                        } else if (action == HomeModel.Action.Open && !busy) {
                             // Open and Uninstall side by side, as Google Play's header has them, stacked when the words do not fit.
                             val open = stringResource(R.string.action_open)
                             val uninstall = stringResource(R.string.action_uninstall)
                             TwoActions(
                                 open, uninstall,
-                                first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it) { GroupLabel(open) } },
-                                second = { BoldButton(onClick = { onUninstall(status) }, modifier = it) { GroupLabel(uninstall) } }
+                                first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(open) } },
+                                second = { BoldButton(onClick = { onUninstall(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(uninstall) } }
                             )
                         } else {
                             StateButton(status, job, actions, Modifier.fillMaxWidth())
@@ -122,8 +126,8 @@ fun AppPageContent(
                                 val uninstall = stringResource(R.string.action_uninstall)
                                 TwoActions(
                                     open, uninstall,
-                                    first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it) { GroupLabel(open) } },
-                                    second = { BoldButton(onClick = { onUninstall(status) }, modifier = it) { GroupLabel(uninstall) } }
+                                    first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(open) } },
+                                    second = { BoldButton(onClick = { onUninstall(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(uninstall) } }
                                 )
                             }
                         }

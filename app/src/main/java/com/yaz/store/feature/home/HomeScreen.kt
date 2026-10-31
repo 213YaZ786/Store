@@ -36,9 +36,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -66,7 +66,6 @@ import com.yaz.store.R
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.IconStore
-import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.SettingsStore
@@ -108,8 +107,6 @@ fun HomeScreen(model: HomeViewModel, onSettings: () -> Unit, onPage: (String) ->
             onOpen = { openApp(context, it) },
             onPage = { onPage(it.entry.packageName) },
             onSettings = onSettings,
-            onOwnUpdate = { if (model.updateSelf()) afterTap() },
-            onOwnLater = model::later,
             seen = model.popped
         )
     }
@@ -178,21 +175,15 @@ fun HomeContent(
     onOpen: (AppStatus) -> Unit = {},
     onPage: (AppStatus) -> Unit = {},
     onSettings: () -> Unit = {},
-    onOwnUpdate: () -> Unit = {},
-    onOwnLater: () -> Unit = {},
     seen: MutableSet<String> = remember { mutableSetOf() }
 ) {
     val context = LocalContext.current
-    // Store's own package is in no list: its queue entry, if any, belongs to the update dialog alone (OwnUpdate).
-    val ownJob = state.jobs.firstOrNull { OwnUpdate.isOwn(it.entry.packageName) }
-    val listState = if (ownJob == null) state else state.copy(jobs = state.jobs - ownJob)
-    OwnUpdateHost(state, ownJob, onOwnUpdate, onOwnLater, onCancel)
     var egg by remember { mutableStateOf<Offset?>(null) }
     val askedRefresh = rememberRefreshHaptics(state.loading, state.error != null)
     val pull = rememberPullToRefreshState()
     val actions = remember(onInstall, onOpen, onPage, onCancel) { CardActions(onInstall, onOpen, onPage, onCancel) }
     // An entry of the queue whose app is not in the list read from GitHub (the list changed under it) keeps its row until it ends.
-    val orphans = listState.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
+    val orphans = state.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
     val empty = state.apps.isEmpty() && orphans.isEmpty()
     val error = state.error
 
@@ -249,7 +240,7 @@ fun HomeContent(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
                         val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
-                        HomeList(listState, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen, homeList)
+                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen, homeList)
                     }
                 }
             }
@@ -322,12 +313,12 @@ private fun HomeList(
 // The row of a queue entry with no app in the list: its name, package and step, and Cancel while it runs.
 @Composable
 private fun OrphanRow(job: InstallJob, onCancel: (String) -> Unit, modifier: Modifier) {
-    ZoneSurface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    ZoneSurface(modifier = modifier.fillMaxWidth(), shape = ShapeDefaults.ExtraLarge) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(job.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(job.entry.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Progress(job)
-            if (job.step.active) QuietButton(onClick = { onCancel(job.entry.packageName) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.cancel)) }
+            if (job.step.active) QuietButton(onClick = { onCancel(job.entry.packageName) }, modifier = Modifier.fillMaxWidth(), shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
         }
     }
 }

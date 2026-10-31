@@ -20,7 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ShapeDefaults
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,12 +66,16 @@ import com.yaz.store.ui.glass.LocalGlass
 import kotlinx.coroutines.delay
 import kotlin.math.hypot
 
-/** The button of an update: red glass, shining. Without glass, the plain accent button. */
+/**
+ * The button of an update: red glass, shining. Without glass, the plain accent button. Its corners are Material 3's
+ * ShapeDefaults.Large, for what sits inside a card (androidx/androidx, compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/Shapes.kt),
+ * the glass, glint and wave drawn on that shape.
+ */
 @Composable
-internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier = Modifier) {
+internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier = Modifier, shape: Shape = ShapeDefaults.Large) {
     val glass = LocalGlass.current
     if (glass == null) {
-        BoldButton(onClick = onClick, modifier = modifier, filled = true) { UpdateLabel(label, Color.Unspecified) }
+        BoldButton(onClick = onClick, modifier = modifier, filled = true, shape = shape) { UpdateLabel(label, Color.Unspecified) }
         return
     }
     // The theme's error colour; by night its deep container, since the night's error is a pale pink that does not read as red glass.
@@ -78,7 +83,6 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
     val red = if (glass.dark) scheme.errorContainer else scheme.error
     val onRed = if (glass.dark) scheme.onErrorContainer else scheme.onError
     val tinted = remember(glass, red) { tintedLook(glass, red.copy(alpha = if (glass.dark) 0.85f else 0.66f)) }
-    val shape = ButtonDefaults.outlinedShape
     val progress = remember { Animatable(0f) }
     var visible by remember { mutableStateOf(false) }
     val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value.isAtLeast(Lifecycle.State.RESUMED)
@@ -98,6 +102,7 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
     CompositionLocalProvider(LocalGlass provides tinted) {
         BoldButton(
             onClick = onClick,
+            shape = shape,
             modifier = modifier
                 .onVisibilityChanged(minDurationMs = 0L, minFractionVisible = 0.1f) { visible = it }
                 .drawWithContent {

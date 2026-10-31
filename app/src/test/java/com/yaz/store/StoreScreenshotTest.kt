@@ -24,7 +24,6 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.ReleaseDetails
-import com.yaz.store.feature.home.OwnOffer
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.Settings
@@ -101,20 +100,6 @@ class StoreScreenshotTest {
     fun homeDownloading() = capture("home_downloading") {
         val running = InstallJob(Fixtures.calculator.entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
         HomeContent(HomeState(loaded = true, apps = Fixtures.everything, details = Fixtures.details, jobs = listOf(running)), onRetry = {})
-    }
-
-    // The dialog sits in its own window: the whole screen is captured, as Roborazzi does for dialogs (captureScreenRoboImage,
-    // https://github.com/takahirom/roborazzi#capture-screen-with-dialog).
-    @Test
-    fun homeOwnUpdate() = capture("home_own_update", screen = true) {
-        val entry = Fixtures.status("Store", "Store", AppState.UPDATE, "0.1.0", "0.1.1", packageName = "com.yaz.store").entry
-        HomeContent(
-            HomeState(
-                loaded = true, apps = Fixtures.current, own = OwnOffer(entry, "0.1.0"),
-                details = mapOf("Store/v0.1.1" to ReleaseDetails(null, mapOf("Store.apk" to 4_200_000L)))
-            ),
-            onRetry = {}
-        )
     }
 
     @Test

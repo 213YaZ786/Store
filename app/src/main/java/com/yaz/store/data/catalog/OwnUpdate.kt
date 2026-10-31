@@ -1,41 +1,19 @@
 package com.yaz.store.data.catalog
 
-// Store's own package, kept out of every list and offered as one dialog at launch. Sources:
-// - Google Play and the App Store never list themselves among the apps to update; the store updates itself apart.
-// - GrapheneOS' App Store updates itself through the same session path as any app, Store being its own installer
-//   (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/InstallTask.kt, MIT): here the entry goes through
-//   the same queue (data/install/InstallQueue).
-// - The dialog at launch when a newer release exists is the update kit's UpdatePrompt (our code, GPL-3.0,
-//   https://github.com/213YaZ786/Calculator/blob/main/app/src/main/java/com/yaz/calculator/ui/component/UpdatePrompt.kt); the state it
-//   is decided from is Installed.stateOf (versionCode above the installed one, signed by our key, an APK for this phone).
-import com.yaz.store.data.trust.OurKeys
+// Store's own package. Decision (the user, 2026-10-31): Store shows itself in its own lists (Installed, Updates) and updates itself from its
+// row or from "Update all", through the same queue as any app; the dialog at launch is gone. Sources:
+// - GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore) keeps its own package in its lists (no filter in
+//   app/src/main/java/app/grapheneos/apps/core/PackageStates.kt, ui/PackagesScreen.kt, ui/UpdatesScreen.kt) and installs itself
+//   last in an update of several apps, in the same flow (core/InstallStart.kt, startPackageUpdate, selfUpdateGroup_): data/install/InstallQueue's
+//   ownPackage rule.
+// - Google Play and Apple's App Store update themselves apart and never list themselves; F-Droid's client and Aurora Store list themselves
+//   among the updates. GrapheneOS' way wins, as the user asked.
 
 /** What Store's own release means for this phone. */
 object OwnUpdate {
     /** Store and its debug build. */
     val PACKAGES: Set<String> = setOf("com.yaz.store", "com.yaz.store.debug")
 
-    /** The repo of Store on the account: a release of it that cannot be read is no entry of the list either. */
-    const val REPO = "Store"
-
-    /** Whether [entry] is Store itself: kept out of every list. */
-    fun isOwn(entry: StoreEntry): Boolean = entry.packageName in PACKAGES || (entry.unread && entry.repo == REPO)
-
-    /** Whether [packageName] is Store's: its queue entry shows in the update dialog only. */
+    /** Whether [packageName] is Store's: its row has no Open (it would only reopen Store) and the door never serves it. */
     fun isOwn(packageName: String): Boolean = packageName in PACKAGES
-
-    /** The newest release among the entries that are Store's own (read ones only), or null. */
-    fun newest(entries: List<StoreEntry>): StoreEntry? =
-        entries.filter { !it.unread && it.packageName in PACKAGES }.maxByOrNull { it.versionCode }
-
-    /**
-     * The release to offer: [own] when this build's [facts] say its state is UPDATE (versionCode above, signed by our key, an APK and a
-     * minSdk that fit [sdk]). A debug build is signed with the debug key: it stands in as signed by ours, as the door's debug rule does
-     * (data/door/Door.status).
-     */
-    fun pending(own: StoreEntry?, facts: InstalledFacts?, sdk: Int, store: String, debug: Boolean): StoreEntry? {
-        if (own == null || facts == null) return null
-        val shown = if (debug) facts.copy(signers = setOf(OurKeys.DIGESTS.first()), installer = store) else facts
-        return own.takeIf { Installed.stateOf(it, shown, sdk, store) == AppState.UPDATE }
-    }
 }

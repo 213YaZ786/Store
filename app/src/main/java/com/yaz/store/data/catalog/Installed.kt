@@ -14,6 +14,7 @@ package com.yaz.store.data.catalog
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import com.yaz.store.BuildConfig
 import com.yaz.store.core.apk.ApkInfoCodec
 import com.yaz.store.data.trust.OurKeys
 
@@ -78,7 +79,17 @@ object Installed {
     fun handOver(facts: InstalledFacts?, store: String): Boolean = facts != null && OurKeys.allOurs(facts.signers) && !held(facts, store)
 
     /** Every entry with its state, read from the phone now. */
-    fun statuses(context: Context, entries: List<StoreEntry>): List<AppStatus> = entries.map {
+    // Store's own entry goes through here like any app's (GrapheneOS' App Store, core/PackageStates.kt, has no filter on its own package);
+    // in a debug build the release entry (com.yaz.store) is matched against the running debug app (com.yaz.store.debug): read as signed by ours
+    // and held by Store, as the door's debug rule does (data/door/Door.status), and shown up to date whatever its versionCode, so the release
+    // Store is never installed beside the debug one (the previous OwnUpdate.pending debug rule).
+    fun statuses(context: Context, entries: List<StoreEntry>, debug: Boolean = BuildConfig.DEBUG): List<AppStatus> = entries.map {
+        if (debug && OwnUpdate.isOwn(it.packageName)) {
+            read(context, context.packageName)?.let { running ->
+                val shown = running.copy(signers = setOf(OurKeys.DIGESTS.first()), installer = context.packageName)
+                return@map AppStatus(it, AppState.UP_TO_DATE, shown, handOver = false)
+            }
+        }
         val facts = read(context, it.packageName)
         AppStatus(it, stateOf(it, facts, Build.VERSION.SDK_INT, context.packageName), facts, handOver(facts, context.packageName))
     }

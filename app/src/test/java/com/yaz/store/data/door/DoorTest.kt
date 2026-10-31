@@ -313,6 +313,61 @@ class DoorTest {
         assertEquals(2, backend.downloads.get())
     }
 
+    // "pending": protocol of the cases above (a fake phone, counted loads); the list is GrapheneOS' App Store's outdated packages
+    // (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/PackageStates.kt, updateNumberOfOutdatedPackages).
+    private fun pendingDoor(known: List<StoreEntry>?, states: Map<String, AppState>) = Door(
+        DoorGuard({ if (it in members) setOf(ours) else null }, { false }, debug = false), staging,
+        load = { loads.incrementAndGet(); emptyList() },
+        statusOf = { e, _ -> AppStatus(e, AppState.UPDATE, null, false) },
+        known = { known },
+        statuses = { list -> list.map { AppStatus(it, states.getValue(it.packageName), null, false) } }
+    )
+
+    private fun other(name: String) = entry().copy(packageName = name, repo = name)
+
+    @Test
+    fun `pending lists the apps with an update waiting and no others`() {
+        val list = listOf(other("a.one"), other("a.two"), other("a.three"), other("a.four"))
+        val d = pendingDoor(list, mapOf("a.one" to AppState.UPDATE, "a.two" to AppState.UP_TO_DATE, "a.three" to AppState.HAND_OVER, "a.four" to AppState.UPDATE))
+        assertEquals(listOf("a.one", "a.four"), d.pending(pkg))
+        assertEquals(0, loads.get())
+        assertEquals(0, backend.downloads.get())
+    }
+
+    @Test
+    fun `pending from a caller that is not ours is refused and reads nothing`() {
+        var read = 0
+        val d = Door(
+            DoorGuard({ if (it == "evil.app") setOf("0".repeat(64)) else null }, { false }, false), staging,
+            load = { loads.incrementAndGet(); emptyList() }, statusOf = { e, _ -> AppStatus(e, AppState.UPDATE, null, false) },
+            known = { read++; listOf(entry()) }
+        )
+        assertNull(d.pending("evil.app"))
+        assertNull(d.pending(null))
+        assertEquals(0, read)
+        assertEquals(0, loads.get())
+    }
+
+    @Test
+    fun `pending before any check is an empty list and starts no check`() {
+        val d = pendingDoor(null, emptyMap())
+        assertEquals(emptyList<String>(), d.pending(pkg))
+        assertEquals(0, loads.get())
+    }
+
+    @Test
+    fun `pending falls back to the catalog the door kept after an opened`() {
+        door.handle("opened", pkg)
+        val kept = Door(
+            DoorGuard({ if (it in members) setOf(ours) else null }, { false }, false), staging,
+            load = { loads.incrementAndGet(); listOf(entry()) }, statusOf = { e, _ -> AppStatus(e, AppState.UPDATE, null, false) },
+            statuses = { list -> list.map { AppStatus(it, AppState.UPDATE, null, false) } }
+        )
+        assertEquals(emptyList<String>(), kept.pending(pkg))
+        kept.handle("opened", pkg)
+        assertEquals(listOf(pkg), kept.pending(pkg))
+    }
+
     @Test
     fun `the debug stand-in reads a debug app as signed by ours and held by Store, a real caller as it is`() {
         val e = entry(5)

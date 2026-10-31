@@ -94,7 +94,9 @@ val appModule = module {
             statusOf = { entry, caller ->
                 Door.status(entry, caller, Installed.read(app, caller.pkg), Build.VERSION.SDK_INT, app.packageName)
             },
-            log = DoorProvider::debugLog
+            log = DoorProvider::debugLog,
+            known = { get<Catalog>().lastKnown },
+            statuses = { Installed.statuses(app, it) }
         )
     }
 }

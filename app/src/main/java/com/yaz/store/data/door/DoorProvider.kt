@@ -21,6 +21,11 @@ class DoorProvider : ContentProvider() {
         val door = door() ?: return Bundle()
         // A caller that cannot be named is refused by the guard (null); a provider not attached to a binder call has none to give.
         val caller = try { callingPackage } catch (e: RuntimeException) { null }
+        // "pending": the packages with an update waiting, from what Store already knows; a refusal is an answer without the array.
+        if (method == Door.PENDING_UPDATES) {
+            val packages = door.pending(caller) ?: return Bundle()
+            return Bundle().apply { putStringArray(Door.PACKAGES, packages.toTypedArray()) }
+        }
         val state = door.handle(method, caller) ?: return Bundle()
         return Bundle().apply { putString(Door.STATE, state) }
     }

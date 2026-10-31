@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -66,7 +66,7 @@ internal fun UpdatesZone(
     val running = jobs.any { it.step.active }
     val waiting = updates.count { u -> jobs.none { it.entry.packageName == u.entry.packageName && it.step.active } }
     val total = HomeModel.totalSize(updates, details)
-    ZoneSurface(shape = RoundedCornerShape(24.dp), modifier = modifier.fillMaxWidth().entrancePop(seen, "updates")) {
+    ZoneSurface(shape = ShapeDefaults.ExtraLarge, modifier = modifier.fillMaxWidth().entrancePop(seen, "updates")) {
         Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 stringResource(R.string.updates_title),
@@ -82,12 +82,12 @@ internal fun UpdatesZone(
                 TwoActions(
                     updateAll, cancelAll, Modifier.padding(horizontal = 14.dp),
                     first = { UpdateButton(onClick = onUpdateAll, label = updateAll, modifier = it) },
-                    second = { QuietButton(onClick = onCancelAll, modifier = it) { GroupLabel(cancelAll) } }
+                    second = { QuietButton(onClick = onCancelAll, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(cancelAll) } }
                 )
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (waiting > 0) UpdateButton(onClick = onUpdateAll, label = updateAll, modifier = Modifier.weight(1f))
-                    if (running) QuietButton(onClick = onCancelAll, modifier = Modifier.weight(1f)) { Text(cancelAll) }
+                    if (running) QuietButton(onClick = onCancelAll, modifier = Modifier.weight(1f), shape = ShapeDefaults.Large) { Text(cancelAll) }
                 }
             }
             Column {

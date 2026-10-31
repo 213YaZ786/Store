@@ -53,8 +53,10 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -156,6 +158,7 @@ fun PillMenu(state: PillMenuState, items: List<PillItem>, @Suppress("UNUSED_PARA
             // A tall item (a long message) is not lifted: the pane opens at the finger.
             val lifted = state.picture != null && item.height < screenH * 0.45f && item.width > 0f
             val finger = item.left + state.pressAt.x
+            val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
             // Where the pane ended up, written by its layout below and read when it draws (its scale grows
             // from the finger, from the top edge or the bottom one).
             val spot = remember { PaneSpot() }
@@ -192,7 +195,7 @@ fun PillMenu(state: PillMenuState, items: List<PillItem>, @Suppress("UNUSED_PARA
                                 alpha = v.coerceIn(0f, 1f)
                                 scaleX = 0.6f + 0.4f * v
                                 scaleY = 0.6f + 0.4f * v
-                                transformOrigin = TransformOrigin(spot.originX, if (spot.fromTop) 0f else 1f)
+                                transformOrigin = TransformOrigin(spot.originX, spot.originY)
                             }
                             .shadow(10.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.2f), spotColor = Color.Black.copy(alpha = 0.2f))
                             .then(if (glass != null) Modifier.dialogGlass(shape, glass, blur) else Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, shape))
@@ -214,20 +217,57 @@ fun PillMenu(state: PillMenuState, items: List<PillItem>, @Suppress("UNUSED_PARA
                 val box = measurables.first()
                 val maxW = (screenW - 2 * margin).toInt().coerceAtLeast(0)
                 val minW = PANE_WIDTH.roundToPx().coerceAtMost(maxW)
-                val paneW = box.maxIntrinsicWidth(Constraints.Infinity).coerceIn(minW, maxW)
+                val contentW = box.maxIntrinsicWidth(Constraints.Infinity)
+                val wideW = contentW.coerceIn(minW, maxW)
+                // A small item (an app icon in a grid) is narrower than the wide pane: its pane is sized to its
+                // content, 200 to 280 dp, and placed against the item as Launcher3's ArrowPopup does.
+                val small = lifted && item.width < wideW
+                val paneW = if (small) {
+                    contentW.coerceIn(SMALL_MIN.roundToPx().coerceAtMost(maxW), SMALL_MAX.roundToPx().coerceAtMost(maxW))
+                } else wideW
                 val placeable = box.measure(Constraints(minWidth = paneW, maxWidth = paneW, maxHeight = (screenH * 0.6f).toInt()))
                 val paneH = placeable.height.toFloat()
                 val below = item.bottom + gap + paneH <= screenH - margin
                 val above = item.top - gap - paneH >= margin
-                val paneY = when {
-                    !lifted -> (item.top + state.pressAt.y - paneH / 2).coerceIn(margin, (screenH - paneH - margin).coerceAtLeast(margin))
-                    below -> item.bottom + gap
-                    above -> item.top - gap - paneH
-                    else -> (screenH - paneH - margin)
+                val farX = (screenW - paneW - margin).coerceAtLeast(margin)
+                val paneX: Float
+                val paneY: Float
+                if (small) {
+                    val beside = !below && !above
+                    paneY = when {
+                        below -> item.bottom + gap
+                        above -> item.top - gap - paneH
+                        else -> ((screenH - paneH) / 2).coerceAtLeast(margin)
+                    }
+                    paneX = if (!beside) {
+                        placeAboutItem(item.left, item.right, paneW.toFloat(), screenW, margin, rtl).coerceIn(margin, farX)
+                    } else {
+                        // Neither above nor below fits: beside the item, on its right in LTR (left in RTL),
+                        // else on the other side, else centred.
+                        val rightSide = item.right + gap
+                        val leftSide = item.left - gap - paneW
+                        val rightFits = rightSide + paneW <= screenW - margin
+                        val leftFits = leftSide >= margin
+                        when {
+                            !rtl && rightFits -> rightSide
+                            rtl && leftFits -> leftSide
+                            leftFits -> leftSide
+                            rightFits -> rightSide
+                            else -> (screenW - paneW) / 2f
+                        }.coerceIn(margin, farX)
+                    }
+                } else {
+                    paneY = when {
+                        !lifted -> (item.top + state.pressAt.y - paneH / 2).coerceIn(margin, (screenH - paneH - margin).coerceAtLeast(margin))
+                        below -> item.bottom + gap
+                        above -> item.top - gap - paneH
+                        else -> (screenH - paneH - margin)
+                    }
+                    paneX = (finger - paneW / 2).coerceIn(margin, farX)
                 }
-                val paneX = (finger - paneW / 2).coerceIn(margin, (screenW - paneW - margin).coerceAtLeast(margin))
-                spot.fromTop = !lifted || below || !above
-                spot.originX = ((finger - paneX) / paneW).coerceIn(0f, 1f)
+                val anchorX = if (small) (item.left + item.right) / 2f else finger
+                spot.originY = if (small && !below && !above) 0.5f else if (!lifted || below || !above) 0f else 1f
+                spot.originX = ((anchorX - paneX) / paneW).coerceIn(0f, 1f)
                 layout(outer.maxWidth, outer.maxHeight) { placeable.place(paneX.toInt(), paneY.toInt()) }
             }
         }
@@ -237,7 +277,26 @@ fun PillMenu(state: PillMenuState, items: List<PillItem>, @Suppress("UNUSED_PARA
 /** Where the pane's scale grows from, set by its layout and read by its graphics layer when it draws. */
 private class PaneSpot {
     var originX = 0.5f
-    var fromTop = true
+    var originY = 0f
+}
+
+/**
+ * The pane's left edge for a small item, as Launcher3's ArrowPopup.orientAboutObject chooses it
+ * (https://github.com/LineageOS/android_packages_apps_Trebuchet/blob/lineage-22.2/src/com/android/launcher3/popup/ArrowPopup.java):
+ * the item's left edge if the pane fits from there (right edge first in RTL), else the other edge, else centred.
+ */
+private fun placeAboutItem(left: Float, right: Float, paneW: Float, screenW: Float, margin: Float, rtl: Boolean): Float {
+    val leftAligned = left
+    val rightAligned = right - paneW
+    val canLeft = leftAligned + paneW <= screenW - margin
+    val canRight = rightAligned >= margin
+    return when {
+        !rtl && canLeft -> leftAligned
+        rtl && canRight -> rightAligned
+        !rtl && canRight -> rightAligned
+        rtl && canLeft -> leftAligned
+        else -> (screenW - paneW) / 2f
+    }
 }
 
 /** An item's motion: plays it, then runs the action once. */
@@ -306,4 +365,6 @@ private fun PillRow(item: PillItem, onDone: () -> Unit) {
 }
 
 private val PANE_WIDTH = 260.dp
+private val SMALL_MIN = 200.dp
+private val SMALL_MAX = 280.dp
 private val ROW_HEIGHT = 50.dp

@@ -11,6 +11,7 @@ import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.Installed
 import com.yaz.store.data.catalog.InstalledFacts
+import com.yaz.store.data.catalog.OwnUpdate
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.trust.OurKeys
 import kotlinx.coroutines.runBlocking
@@ -26,6 +27,10 @@ class Door(
     private val statusOf: (StoreEntry, Caller) -> AppStatus,
     /** A line for the debug log; nothing personal in it. */
     private val log: (String) -> Unit = {},
+    /** The entries Store last read, in memory (Catalog.lastKnown), or null when it has read none since it started. Never a network read. */
+    private val known: () -> List<StoreEntry>? = { null },
+    /** The state of each entry on this phone (Installed.statuses), read from the phone alone. */
+    private val statuses: (List<StoreEntry>) -> List<AppStatus> = { emptyList() },
     private val now: () -> Long = System::currentTimeMillis
 ) {
 
@@ -58,8 +63,32 @@ class Door(
         return state
     }
 
+    /**
+     * The packages with an update waiting (state UPDATE) in what Store last read, for [callingPackage]: null when the caller is not ours.
+     * Answers from memory and the phone only: the entries Store last read, else the ones the door kept; none yet is an empty list, and
+     * no download or check is ever started here. Source: GrapheneOS' App Store filters the states it holds by "eligible for update"
+     * (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/PackageStates.kt, updateNumberOfOutdatedPackages).
+     */
+    fun pending(callingPackage: String?): List<String>? {
+        val caller = guard.check(callingPackage)
+        if (caller == null) {
+            log("$PENDING_UPDATES refused, caller not ours")
+            return null
+        }
+        val packages = try {
+            val entries = known() ?: cached ?: emptyList()
+            statuses(entries).filter { it.state == AppState.UPDATE }.map { it.entry.packageName }.distinct()
+        } catch (e: Exception) {
+            emptyList()
+        }
+        log("$PENDING_UPDATES from ${caller.pkg}: ${packages.size}")
+        return packages
+    }
+
     // Find the caller's entry; an update that Store may install silently is downloaded and checked now.
     private suspend fun opened(caller: Caller): String {
+        // Store's own entry is in the lists now (the user, 2026-10-31) but never goes through the door: it updates itself from its row.
+        if (OwnUpdate.isOwn(caller.base)) return NONE
         val entry = entries().firstOrNull { it.packageName == caller.base } ?: return NONE
         val status = statusOf(entry, caller)
         return when {
@@ -112,6 +141,12 @@ class Door(
 
         const val OPENED = "opened"
         const val LEFT = "left"
+
+        /** The method that lists the packages with an update waiting; the answer is a String array under [PACKAGES]. */
+        const val PENDING_UPDATES = "pending"
+
+        /** The key of that array. */
+        const val PACKAGES = "packages"
 
         /** The key of the answer. */
         const val STATE = "state"

@@ -94,9 +94,7 @@ data class RepoInfo(val name: String, val description: String)
 data class CatalogResult(
     val entries: List<StoreEntry>,
     val error: CatalogError?,
-    val listCached: Boolean = false,
-    /** Store's own newest release, kept out of [entries] (OwnUpdate): the update dialog reads it. */
-    val own: StoreEntry? = null
+    val listCached: Boolean = false
 )
 
 /** What app.json holds once checked. */
@@ -349,21 +347,26 @@ class Catalog(
      */
     // The former load, renamed loadLive; load adds the debug seed to it (kotlinx.coroutines withContext,
     // https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html).
-    suspend fun load(): CatalogResult {
+    suspend fun load(): CatalogResult = loadAll().also { if (it.entries.isNotEmpty()) lastKnown = it.entries }
+
+    /**
+     * The entries of the last [load] that found any, in memory only (null before the first); the door's "pending" reads them, so a call
+     * from a sister never reaches the network. Source: GrapheneOS' App Store keeps the packages it has read in one object any screen reads
+     * (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/PackageStates.kt).
+     */
+    @Volatile var lastKnown: List<StoreEntry>? = null
+        private set
+
+    private suspend fun loadAll(): CatalogResult {
         val live = loadLive()
         val extra = withContext(Dispatchers.IO) { seeded() }
-        if (extra.isEmpty()) return apart(overlaid(live))
+        // Store's own entry stays in the list like any app's (the user, 2026-10-31; GrapheneOS' App Store keeps its own package in its lists,
+        // https://github.com/GrapheneOS/AppStore, core/PackageStates.kt, ui/PackagesScreen.kt, ui/UpdatesScreen.kt: no filter).
+        if (extra.isEmpty()) return overlaid(live)
         // A seeded entry replaces the live one of the same package; the error of the live read stays, so a test sees both.
         val merged = (live.entries.filter { l -> extra.none { it.packageName == l.packageName } } + extra)
             .sortedWith(compareBy({ it.label.lowercase() }, { it.repo }))
-        return apart(overlaid(live.copy(entries = merged)))
-    }
-
-    // Store's own package leaves the list, every screen and the door reading it; its newest release rides along apart (OwnUpdate). Google Play and
-    // the App Store never list themselves; the split is Kotlin's partition (https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/partition.html).
-    private fun apart(result: CatalogResult): CatalogResult {
-        val (mine, others) = result.entries.partition(OwnUpdate::isOwn)
-        return result.copy(entries = others, own = OwnUpdate.newest(mine))
+        return overlaid(live.copy(entries = merged))
     }
 
     // The debug overlay applied last, over the live and the seeded entries; off the main thread as load does it

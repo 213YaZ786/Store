@@ -234,7 +234,9 @@ fun FloatingAction(icon: ImageVector, label: String, onClick: () -> Unit, tint: 
  * done the Compose way: Modifier.scrollable on the header drives the content's own ScrollableState
  * (https://github.com/androidx/androidx/blob/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/gestures/Scrollable.kt).
  * [reverseLayout] is the content list's own (a thread laid out from the bottom), so a drag goes the same way
- * as on the list (ScrollableDefaults.reverseDirection). Floating pieces over the content (the [overlay], a
+ * as on the list (ScrollableDefaults.reverseDirection). [softEdge] off draws the content whole under the header,
+ * for a list that must show every line up to the window's top (SMS's conversation), as
+ * View.setVerticalFadingEdgeEnabled(false) (https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/view/View.java). Floating pieces over the content (the [overlay], a
  * [FloatingDock] inside it) take the same drag from [LocalFrameScroll]. Without [scroll] nothing changes.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -246,6 +248,7 @@ fun FloatingFrame(
     largeTitle: LargeTitle? = null,
     scroll: ScrollableState? = null,
     reverseLayout: Boolean = false,
+    softEdge: Boolean = true,
     content: @Composable (PaddingValues) -> Unit
 ) {
     val density = LocalDensity.current
@@ -301,7 +304,7 @@ fun FloatingFrame(
         // The fade is outside glassSource: the backdrop records the content whole.
         Box(
             Modifier.fillMaxSize()
-                .then(if (headerState.value > 0.dp) Modifier.softTopEdge(headerNow, edgeStrength) else Modifier)
+                .then(if (softEdge && headerState.value > 0.dp) Modifier.softTopEdge(headerNow, edgeStrength) else Modifier)
                 .then(if (look != null) Modifier.glassSource(backdrop, look) else Modifier)
         ) {
             ProvideBounce {
@@ -465,12 +468,12 @@ private class HeaderPadding(private val top: () -> Dp, private val bottom: Dp) :
 }
 
 /**
- * What has scrolled under the first [height] of this element fades to nothing at the
- * very top and is whole again at [height]: a gradient drawn with BlendMode.DstIn
+ * What has scrolled under the first [height] of this element stays faded down to [height] and is
+ * whole again 16 dp below it: a gradient drawn with BlendMode.DstIn
  * over an offscreen layer. Android's own recipe, FadedEdgeBox:
  * https://github.com/android/snippets/blob/main/compose/snippets/src/main/java/com/example/compose/snippets/graphics/GraphicsModifiersSnippets.kt
  * (region android_compose_graphics_faded_edge_example), with the gradient
- * bounded to [height] instead of the whole element ([height] is read when drawing,
+ * placed at [height] instead of spanning the whole element ([height] is read when drawing,
  * so a header that collapses redraws without recomposing).
  *
  * The fade grows with the scroll as ScrollView.getTopFadingEdgeStrength does: 0 at rest, the
@@ -486,15 +489,16 @@ private fun Modifier.softTopEdge(height: () -> Dp, strength: () -> Float): Modif
             drawContent()
             val s = strength()
             if (s <= 0f) return@drawWithContent
-            // Fading under the whole title row, whole again over the last 16 dp of the header,
-            // where the first row of the content starts at rest.
+            // Faded down to the header's bottom, so every round button is covered whole (the row
+            // has 8 dp of padding below them), whole again 16 dp below it (the user, 2026-10-31:
+            // it stopped halfway down the buttons).
             val end = height().toPx()
             drawRect(
                 brush = Brush.verticalGradient(
                     0f to Color.Black.copy(alpha = 1f - s),
                     1f to Color.Black,
-                    startY = (end - 16.dp.toPx()).coerceAtLeast(0f),
-                    endY = end
+                    startY = end,
+                    endY = end + 16.dp.toPx()
                 ),
                 blendMode = BlendMode.DstIn
             )
