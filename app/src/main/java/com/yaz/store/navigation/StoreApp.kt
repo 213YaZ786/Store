@@ -60,7 +60,11 @@ fun StoreApp() {
         composable(Routes.APP, arguments = listOf(navArgument("package") { type = NavType.StringType })) { entry ->
             AppPageScreen(model, entry.arguments?.getString("package").orEmpty(), onBack = { nav.popBackStack() })
         }
-        composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.SETTINGS) {
+            // The guide again from About: its pages alone on the stack, so its end leads to Home as on the first launch
+            // (Navigation's popUpTo, https://developer.android.com/guide/navigation/backstack#pop).
+            SettingsScreen(onBack = { nav.popBackStack() }, onGuide = { nav.navigate(Routes.SETUP) { popUpTo(Routes.HOME) { inclusive = true } } })
+        }
     }
     PlainBack(nav)
 }

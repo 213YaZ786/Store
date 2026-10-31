@@ -103,8 +103,8 @@ class HomeContentTest {
         }
         compose.onNodeWithText("Updates").assertIsDisplayed()
         // The count beside the title replaces "Up to date".
-        compose.onNodeWithText("1 update").assertIsDisplayed()
-        compose.onNodeWithText("Up to date").assertDoesNotExist()
+        compose.onNodeWithContentDescription("1 update").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Up to date").assertDoesNotExist()
         compose.onNodeWithText("Update all, 4.2 MB").performClick()
         assertEquals(1, all)
         // The size only, in the update's row and in the list's row; no version numbers.
@@ -123,12 +123,12 @@ class HomeContentTest {
     @Test
     fun `with no update the state says Up to date, and seven taps play the egg`() {
         compose.setContent { HomeContent(HomeState(loaded = true, apps = Fixtures.current), onRetry = {}) }
-        compose.onNodeWithText("Up to date").assertIsDisplayed()
-        repeat(6) { compose.onNodeWithText("Up to date").performClick() }
+        compose.onNodeWithContentDescription("Up to date").assertIsDisplayed()
+        repeat(6) { compose.onNodeWithContentDescription("Up to date").performClick() }
         compose.onNodeWithContentDescription("Store is open").assertDoesNotExist()
         // The clock is held, or the egg would play to its end before it is looked for (Compose testing: mainClock.autoAdvance).
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithText("Up to date").performClick()
+        compose.onNodeWithContentDescription("Up to date").performClick()
         compose.mainClock.advanceTimeBy(300)
         compose.onNodeWithContentDescription("Store is open").assertExists()
         // It leaves by itself.

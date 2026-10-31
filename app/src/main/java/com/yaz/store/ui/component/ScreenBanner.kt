@@ -77,7 +77,8 @@ fun ScreenBanner(
                 val titleStyle = MaterialTheme.typography.headlineSmall
                 BasicText(
                     title,
-                    style = titleStyle.copy(color = LocalContentColor.current, textAlign = TextAlign.Center),
+                    // Every title in the accent (the user, 2026-10-31), as SettingsTiles' SettingsSectionTitle.
+                    style = titleStyle.copy(color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = titleStyle.fontSize, stepSize = 0.5.sp)

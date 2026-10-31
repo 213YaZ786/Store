@@ -99,7 +99,8 @@ fun AppPageContent(
                         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                             AppIcon(status, 72.dp)
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(entry.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                // Every title in the accent (the user, 2026-10-31), as Modules' SettingsSectionTitle.
+                                Text(entry.label, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                                 Text(entry.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }

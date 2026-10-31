@@ -152,7 +152,8 @@ fun FloatingTop(
                 center != null -> center()
                 title != null -> BasicText(
                     title,
-                    style = MaterialTheme.typography.headlineSmall.copy(color = LocalContentColor.current, textAlign = TextAlign.Center),
+                    // Every title in the accent (the user, 2026-10-31), as SettingsTiles' SettingsSectionTitle.
+                    style = MaterialTheme.typography.headlineSmall.copy(color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     autoSize = TextAutoSize.StepBased(
@@ -179,7 +180,7 @@ fun TitlePill(title: String) {
         val style = MaterialTheme.typography.titleMedium
         BasicText(
             title,
-            style = style.copy(color = LocalContentColor.current),
+            style = style.copy(color = MaterialTheme.colorScheme.primary),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = style.fontSize, stepSize = 0.5.sp),
@@ -431,6 +432,7 @@ private fun LargeTitleBlock(spec: LargeTitle, collapse: TitleCollapse) {
         Text(
             spec.title,
             style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

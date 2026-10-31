@@ -77,7 +77,7 @@ private const val APPEARANCE = "appearance"
 private const val ABOUT = "about"
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onGuide: () -> Unit = {}) {
     val store: SettingsStore = koinInject()
     val settings by store.settings.collectAsState()
     val context = LocalContext.current
@@ -97,7 +97,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
         },
-        onWifiOnly = { on -> store.update { it.copy(wifiOnly = on) } }
+        onWifiOnly = { on -> store.update { it.copy(wifiOnly = on) } },
+        onGuide = onGuide
     )
 }
 
@@ -114,7 +115,8 @@ fun SettingsContent(
     onGlass: (Boolean) -> Unit = {},
     onTextScale: (Float) -> Unit = {},
     onBackground: (Boolean) -> Unit = {},
-    onWifiOnly: (Boolean) -> Unit = {}
+    onWifiOnly: (Boolean) -> Unit = {},
+    onGuide: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
     var dialog by rememberSaveable { mutableStateOf(OpenDialog.NONE) }
@@ -192,6 +194,12 @@ fun SettingsContent(
             )
         ),
         ABOUT to listOf(
+            // The welcome pages shown again, as Dialer's About offers (YAZ/Dialer, feature/settings/SettingsScreen.kt, "guide").
+            SettingsActionTile(
+                id = "guide", name = stringResource(R.string.settings_guide), title = stringResource(R.string.settings_guide), icon = AppIcons.Play,
+                value = stringResource(R.string.settings_guide_value), summary = stringResource(R.string.settings_guide_summary),
+                onClick = onGuide
+            ),
             SettingsActionTile(
                 id = "version", name = version, title = version, icon = AppIcons.Info,
                 value = BuildConfig.VERSION_NAME, summary = stringResource(R.string.settings_version_summary)

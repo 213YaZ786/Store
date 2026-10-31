@@ -29,8 +29,17 @@ object AppIcons {
     /** A grid of squares: the icon of an app with no picture. */
     val Apps: ImageVector by lazy { build("Apps", "M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z") }
 
+    // Warning and Done in Material Icons' Round style (Apache-2.0, https://github.com/google/material-design-icons,
+    // src/alert/warning/materialiconsround/24px.svg and src/action/check_circle/materialiconsround/24px.svg).
+
+    /** Updates wait. */
+    val Warning: ImageVector by lazy { build("Warning", "M4.47 21h15.06c1.54 0 2.5-1.67 1.73-3L13.73 4.99c-.77-1.33-2.69-1.33-3.46 0L2.74 18c-.77 1.33.19 3 1.73 3zM12 14c-.55 0-1-.45-1-1v-2c0-.55.45-1 1-1s1 .45 1 1v2c0 .55-.45 1-1 1zm1 4h-2v-2h2v2z") }
+
     /** Done. */
-    val CheckCircle: ImageVector by lazy { build("CheckCircle", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z") }
+    val CheckCircle: ImageVector by lazy { build("CheckCircle", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM9.29 16.29 5.7 12.7c-.39-.39-.39-1.02 0-1.41.39-.39 1.02-.39 1.41 0L10 14.17l6.88-6.88c.39-.39 1.02-.39 1.41 0 .39.39.39 1.02 0 1.41l-7.59 7.59c-.38.39-1.02.39-1.41 0z") }
+
+    /** The guide shown again: Dialer's Play (YAZ/Dialer, ui/icon/AppIcons.kt), Material Icons' play_arrow. */
+    val Play: ImageVector by lazy { build("Play", "M8 5v14l11-7z") }
 
     /** Notifications. */
     val Notifications: ImageVector by lazy { build("Notifications", "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z") }

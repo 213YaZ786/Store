@@ -108,7 +108,8 @@ fun SetupContent(
         Spacer(Modifier.height(32.dp))
         LoadingMark(size = 120.dp)
         Spacer(Modifier.height(16.dp))
-        Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.displaySmall, textAlign = TextAlign.Center)
+        // Every title in the accent (the user, 2026-10-31), as Modules' SettingsSectionTitle.
+        Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
         Spacer(Modifier.height(28.dp))
 
         SetupZone(AppIcons.Update, stringResource(R.string.setup_installs), done = canInstall) {
