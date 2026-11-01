@@ -50,7 +50,10 @@ fun ComponentActivity.AppSurface(content: @Composable () -> Unit) {
     }
 
     AppTheme(darkTheme = dark, pureBlack = settings.pureBlack, textScale = settings.textScale) {
-        val look = rememberGlassLook(MaterialTheme.colorScheme, settings.glass)
+        // The quiet glass on every surface (base kit, ui/glass/Glass.kt: Haze's materials,
+        // https://github.com/chrisbanes/haze/blob/main/haze-materials/src/commonMain/kotlin/dev/chrisbanes/haze/blur/materials/HazeMaterials.kt;
+        // the user, 2026-11-01).
+        val look = rememberGlassLook(MaterialTheme.colorScheme, settings.glass, quiet = true)
         // Text and icons take the theme's colour in every window: without it
         // Compose draws them black, unreadable on a dark ground.
         CompositionLocalProvider(LocalGlass provides look, LocalContentColor provides MaterialTheme.colorScheme.onBackground) {

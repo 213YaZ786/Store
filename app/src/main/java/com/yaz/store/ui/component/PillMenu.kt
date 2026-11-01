@@ -5,14 +5,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -47,9 +44,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.graphics.drawOutline
-import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -59,8 +53,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
-import androidx.compose.ui.node.DelegatableNode
-import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Constraints
@@ -336,59 +328,15 @@ private class PillPlay(private val scope: kotlinx.coroutines.CoroutineScope) {
     }
 }
 
-/**
- * The press of a row, as iOS 26's context menu shows it: a grey rounded fill inset from the menu's edges (Large, 16 dp, 6 dp from the
- * left and the right), faded in on press and out on release, behind the row's content. Not Material's default indication, a rectangle across
- * the whole row. The official recipe "Create and apply a custom Indication", its ScaleIndication adapted: an IndicationNodeFactory whose
- * Modifier.Node is a DrawModifierNode, collecting the interaction source's Press, Release and Cancel into an Animatable
- * (https://developer.android.com/develop/ui/compose/touch-input/user-interactions/handling-interactions, "Create and apply a custom Indication").
- * The fill is [color] (the theme's onSurface at a low alpha, passed in).
- */
-private class PillPressIndication(private val color: Color) : IndicationNodeFactory {
-    override fun create(interactionSource: InteractionSource): DelegatableNode = PillPressNode(interactionSource, color)
-
-    override fun equals(other: Any?): Boolean = other is PillPressIndication && other.color == color
-
-    override fun hashCode(): Int = color.hashCode()
-}
-
-private class PillPressNode(private val interactionSource: InteractionSource, private val color: Color) : Modifier.Node(), DrawModifierNode {
-    private val shown = Animatable(0f)
-
-    override fun onAttach() {
-        coroutineScope.launch {
-            interactionSource.interactions.collect { interaction ->
-                when (interaction) {
-                    is PressInteraction.Press -> shown.animateTo(1f, tween(90))
-                    is PressInteraction.Release, is PressInteraction.Cancel -> shown.animateTo(0f, tween(220))
-                }
-            }
-        }
-    }
-
-    override fun ContentDrawScope.draw() {
-        if (shown.value > 0f) {
-            // Material 3's Large shape, 16 dp (ShapeDefaults), the rule's shape for what sits inside a pane.
-            val shape = ShapeDefaults.Large
-            inset(horizontal = PRESS_INSET.toPx(), vertical = 0f) {
-                drawOutline(shape.createOutline(size, layoutDirection, this), color, alpha = shown.value)
-            }
-        }
-        drawContent()
-    }
-}
-
-private val PRESS_INSET = 6.dp
-
 /** A row of the pane: the action's name, its icon at the end; its motion plays, then it runs. */
 @Composable
 private fun PillRow(item: PillItem, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val play = remember { PillPlay(scope) }
     val ink = if (item.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-    // iOS's grey: onSurface at 10 %.
-    val grey = MaterialTheme.colorScheme.onSurface
-    val pressed = remember(grey) { PillPressIndication(grey.copy(alpha = 0.10f)) }
+    // The press: Android 12's sparkle ripple clipped to the row's own shape, Material 3's Large (16 dp, the
+    // rule's shape for what sits inside a pane), 6 dp in from the pane's edges as iOS 26's highlight is.
+    val pressed = rememberSparklePress(ShapeDefaults.Large, horizontal = 6.dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
