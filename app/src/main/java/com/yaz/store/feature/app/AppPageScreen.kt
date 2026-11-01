@@ -42,7 +42,8 @@ fun AppPageScreen(model: HomeViewModel, packageName: String, onBack: () -> Unit)
             onCancel = model::cancel
         )
     }
-    WithIcons(remember { PhoneIcons(context, icons) }) {
+    val opening by icons.generation.collectAsStateWithLifecycle()
+    WithIcons(remember { PhoneIcons(context, icons) }, opening) {
         AppPageContent(
             status = status,
             job = HomeModel.jobOf(status, state.jobs),

@@ -13,6 +13,7 @@ import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.catalog.Openings
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.InstallQueue
@@ -43,7 +44,12 @@ data class HomeState(
 // The actions below hand the person's taps to the queue and the queue's list comes back in the state: Android's ViewModel guide
 // (https://developer.android.com/topic/libraries/architecture/viewmodel) and Files' ArchiveViewModel (YAZ/Files at HEAD,
 // feature/archive/ArchiveViewModel.kt), which hands its work to a runner and collects its StateFlow.
-class HomeViewModel(private val app: Application, private val catalog: Catalog, private val queue: InstallQueue) : AndroidViewModel(app) {
+class HomeViewModel(
+    private val app: Application,
+    private val catalog: Catalog,
+    private val queue: InstallQueue,
+    private val openings: Openings
+) : AndroidViewModel(app) {
 
     private val mutable = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = mutable.asStateFlow()
@@ -89,6 +95,9 @@ class HomeViewModel(private val app: Application, private val catalog: Catalog, 
     fun load() {
         if (job?.isActive == true) return
         mutable.update { it.copy(loading = true) }
+        // Source: Openings (this app's data/catalog/Openings.kt): each opening (ON_START) and each pull is a new generation, so the repos' icons,
+        // layers and words are asked again with the ETag (GitHub's conditional request) and the rows load their pictures again.
+        openings.begin()
         job = viewModelScope.launch {
             val result = catalog.load()
             val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }

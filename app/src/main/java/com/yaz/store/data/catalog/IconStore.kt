@@ -13,15 +13,22 @@ class IconStore(
     private val net: ReleaseNet,
     private val dir: File,
     /** Debug builds only (AppModule): pictures a test pushes, see [CatalogOverlay]. Nothing in the release build. */
-    private val overlay: CatalogOverlay? = null
+    private val overlay: CatalogOverlay? = null,
+    /** The opening signal (Openings): the repos are asked again at each opening and pull. */
+    private val openings: Openings = Openings(),
+    /** The conditional read of the repo's files: ReleaseNet.getIfChanged in the app, a canned answer in a test. */
+    fetch: (url: String, max: Long, etag: String?) -> ReleaseNet.Fresh? = net::getIfChanged
 ) {
 
     // The repo's own files, read with the conditional request (RepoFiles, ported out of this class's former `conditional`).
-    private val files = RepoFiles(dir, net::getIfChanged)
+    private val files = RepoFiles(dir, fetch)
 
-    // Repos asked for their icon since the process started: one conditional request per repo and opening.
-    private val asked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
-    private val askedLayers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    // Repos asked for their icon since the last opening: one conditional request per repo and opening (sets emptied by Openings.begin).
+    private val asked = openings.asked()
+    private val askedLayers = openings.asked()
+
+    /** The number of the current opening, for a screen that loads its pictures again when it changes. */
+    val generation: kotlinx.coroutines.flow.StateFlow<Int> get() = openings.generation
 
     /** The published layers of an icon and their pictures' bytes, [pictures] in the order of [icon]'s layers. */
     class LayerFiles(val icon: IconLayers, val pictures: List<ByteArray>)

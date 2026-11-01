@@ -13,7 +13,7 @@ package com.yaz.store.feature.home
 // Every one of them is shown in the round pane of glass of the shared GlassIcon.
 // The loaded bitmaps wait in an android.util.LruCache (https://developer.android.com/reference/android/util/LruCache), as the Android
 // image-loading guide has it (https://developer.android.com/topic/performance/graphics/cache-bitmap), and are loaded off the main thread
-// from produceState (https://developer.android.com/develop/ui/compose/side-effects#producestate).
+// from a LaunchedEffect that restarts as produceState does (https://developer.android.com/develop/ui/compose/side-effects#producestate).
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
@@ -28,8 +28,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
@@ -152,16 +155,28 @@ fun AppIcon(status: AppStatus, size: Dp, modifier: Modifier = Modifier) {
     val source = LocalIconSource.current
     // The system's night mode is a key: Store handles uiMode itself, so night coming or going does not recreate the screen.
     val night = LocalConfiguration.current.uiMode
-    val picture by produceState<ImageBitmap?>(null, status.entry.packageName, status.entry.tag, status.installed?.versionCode, source, night) {
-        value = source.load(status)
+    // Source: produceState and LaunchedEffect restart when a key changes (https://developer.android.com/develop/ui/compose/side-effects#producestate);
+    // produceState's initial value comes back at each restart, so the last picture is kept in a remembered state instead and replaced when the new
+    // one arrives: a row reloaded at a new opening (LocalOpening, the repos asked again) never flashes back to the grid icon. A load that finds
+    // nothing keeps the picture only while the app, its version and the night are the same; otherwise the grid shows. Only a picture of the same package is shown.
+    val opening = LocalOpening.current
+    val identity = listOf(status.entry.packageName, status.entry.tag, status.installed?.versionCode, source, night)
+    var kept by remember { mutableStateOf<Pair<List<Any?>, ImageBitmap?>?>(null) }
+    LaunchedEffect(identity, opening) {
+        val loaded = source.load(status)
+        if (loaded != null || kept?.first != identity) kept = identity to loaded
     }
+    val picture = kept?.takeIf { it.first[0] == status.entry.packageName }?.second
     GlassIcon(picture, size, modifier) {
         Icon(AppIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(size * 0.5f))
     }
 }
 
-/** Gives [content] the icons of the phone. */
+/** The number of the current opening (IconStore.generation): an icon loads its picture again when it changes. */
+val LocalOpening = staticCompositionLocalOf { 0 }
+
+/** Gives [content] the icons of the phone, [opening] the number of the current opening. */
 @Composable
-fun WithIcons(source: IconSource, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalIconSource provides source, content = content)
+fun WithIcons(source: IconSource, opening: Int = 0, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalIconSource provides source, LocalOpening provides opening, content = content)
 }

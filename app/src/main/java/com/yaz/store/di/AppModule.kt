@@ -18,6 +18,7 @@ import com.yaz.store.data.door.DoorGuard
 import com.yaz.store.data.door.DoorProvider
 import com.yaz.store.data.door.Staging
 import com.yaz.store.data.catalog.IconStore
+import com.yaz.store.data.catalog.Openings
 import com.yaz.store.data.catalog.RepoDescriptions
 import com.yaz.store.data.catalog.RepoFiles
 import com.yaz.store.data.catalog.Seeded
@@ -59,9 +60,11 @@ val appModule = module {
         )
     }
     // The short descriptions of the repos, one file per repo and locale in the cache, asked once per opening with the ETag (RepoFiles).
-    single { RepoDescriptions(RepoFiles(RepoDescriptions.folder(androidContext().cacheDir), get<ReleaseNet>()::getIfChanged)) }
+    single { RepoDescriptions(RepoFiles(RepoDescriptions.folder(androidContext().cacheDir), get<ReleaseNet>()::getIfChanged), get()) }
+    // The opening signal shared by the catalogue's readers: HomeViewModel.load() begins a new one, the repos' files are asked again.
+    single { Openings() }
     // The release icons of apps not installed, one file per tag in the cache.
-    single { IconStore(get<ReleaseNet>(), File(androidContext().cacheDir, "icons"), if (BuildConfig.DEBUG) debugOverlay(androidContext()) else null) }
+    single { IconStore(get<ReleaseNet>(), File(androidContext().cacheDir, "icons"), if (BuildConfig.DEBUG) debugOverlay(androidContext()) else null, get()) }
     // The install kit's installer and isolated inspector, and the queue that downloads, checks and installs one entry at a time
     // (data/install). Its work runs in the application's own scope, off the main thread; the foreground service starts when an entry is queued.
     single { Installer(androidContext(), get()) }

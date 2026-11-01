@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.yaz.store.data.catalog.Catalog
+import com.yaz.store.data.catalog.Openings
 import com.yaz.store.data.install.InstallQueue
 import com.yaz.store.data.settings.SettingsStore
 import com.yaz.store.feature.app.AppPageScreen
@@ -46,7 +47,8 @@ fun StoreApp() {
     val context = LocalContext.current
     val catalog: Catalog = koinInject()
     val queue: InstallQueue = koinInject()
-    val model: HomeViewModel = viewModel(context as ComponentActivity) { HomeViewModel(context.applicationContext as Application, catalog, queue) }
+    val openings: Openings = koinInject()
+    val model: HomeViewModel = viewModel(context as ComponentActivity) { HomeViewModel(context.applicationContext as Application, catalog, queue, openings) }
     // Each time the app comes to the front: the account and the phone are read again (an unchanged answer comes from the ETag cache).
     LifecycleEventEffect(Lifecycle.Event.ON_START) { model.load() }
 

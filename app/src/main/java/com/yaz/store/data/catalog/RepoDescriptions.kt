@@ -15,10 +15,10 @@ fun interface RepoWords {
     fun description(repo: String, tags: List<String>): String?
 }
 
-class RepoDescriptions(private val files: RepoFiles) : RepoWords {
+class RepoDescriptions(private val files: RepoFiles, openings: Openings = Openings()) : RepoWords {
 
-    // Repo and locale pairs asked since the process started: one conditional request each per opening (IconStore.asked, the same rule).
-    private val asked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    // Repo and locale pairs asked since the last opening: one conditional request each per opening (IconStore.asked, the same rule: Openings.asked).
+    private val asked = openings.asked()
 
     // Source: IconStore.repoIcon (this app's data/catalog/IconStore.kt), for the short description of up to two locales: the phone's first language,
     // then en-US; the first one found wins. Cleaned to one line and cut to MAX_DESCRIPTION as app.json's description is (CatalogRules.parseAppJson,

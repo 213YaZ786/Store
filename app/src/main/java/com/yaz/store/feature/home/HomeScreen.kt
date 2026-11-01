@@ -95,7 +95,8 @@ fun HomeScreen(model: HomeViewModel, onSettings: () -> Unit, onPage: (String) ->
     val afterTap = notificationAsker(context, settings)
     ConfirmWhileInFront(state.jobs)
 
-    WithIcons(remember { PhoneIcons(context, icons) }) {
+    val opening by icons.generation.collectAsStateWithLifecycle()
+    WithIcons(remember { PhoneIcons(context, icons) }, opening) {
         HomeContent(
             state,
             onRetry = model::load,
