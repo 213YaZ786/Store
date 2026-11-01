@@ -72,11 +72,13 @@ internal fun AppList(
     actions: CardActions,
     seen: MutableSet<String>,
     details: Map<String, ReleaseDetails> = emptyMap(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showTitle: Boolean = true
 ) {
     val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionTitle(title)
+        // The first section's title sits on Home's top line instead (showTitle = false), see HomeContent.
+        if (showTitle) SectionTitle(title)
         val sorted = HomeModel.sorted(apps)
         Column(verticalArrangement = Arrangement.spacedBy(SegmentedGap)) {
             sorted.forEachIndexed { index, status ->

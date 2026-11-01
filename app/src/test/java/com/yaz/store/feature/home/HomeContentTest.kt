@@ -13,6 +13,7 @@ import com.yaz.store.data.catalog.ReleaseDetails
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -101,10 +102,9 @@ class HomeContentTest {
                 onInstall = { updated += it.entry.repo }, onUpdateAll = { all++ }, onPage = { pages += it.entry.repo }
             )
         }
+        // "Updates" is on the top line, and the zone does not draw it again.
         compose.onNodeWithText("Updates").assertIsDisplayed()
-        // The count beside the title replaces "Up to date".
-        compose.onNodeWithContentDescription("1 update").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Up to date").assertDoesNotExist()
+        compose.onAllNodesWithText("Updates").assertCountEquals(1)
         compose.onNodeWithText("Update all, 4.2 MB").performClick()
         assertEquals(1, all)
         // The size only, in the update's row and in the list's row; no version numbers.
@@ -121,15 +121,35 @@ class HomeContentTest {
     }
 
     @Test
-    fun `with no update the state says Up to date, and seven taps play the egg`() {
+    fun `the top line shows Updates when an update waits, else Installed, and its section does not show the title twice`() {
+        // Compose testing guide (https://developer.android.com/develop/ui/compose/testing): onAllNodesWithText and assertCountEquals.
+        var state by mutableStateOf(HomeState(loaded = true, apps = listOf(calculator, dialer)))
+        compose.setContent { HomeContent(state, onRetry = {}) }
+        compose.onAllNodesWithText("Updates").assertCountEquals(1)
+        // Installed keeps its own title below the Updates zone.
+        compose.onAllNodesWithText("Installed").assertCountEquals(1)
+        state = HomeState(loaded = true, apps = Fixtures.current)
+        compose.onAllNodesWithText("Installed").assertCountEquals(1)
+        compose.onAllNodesWithText("Updates").assertCountEquals(0)
+        // Available, not first on a phone, keeps its title in its list.
+        compose.onAllNodesWithText("Available").assertCountEquals(1)
+    }
+
+    @Test
+    fun `the top title tapped 7 times plays the egg`() {
+        // Compose testing guide (https://developer.android.com/develop/ui/compose/testing): performClick on a text node.
         compose.setContent { HomeContent(HomeState(loaded = true, apps = Fixtures.current), onRetry = {}) }
-        compose.onNodeWithContentDescription("Up to date").assertIsDisplayed()
-        repeat(6) { compose.onNodeWithContentDescription("Up to date").performClick() }
+        compose.onNodeWithText("Installed").assertIsDisplayed()
+        repeat(6) { compose.onNodeWithText("Installed").performClick() }
         compose.onNodeWithContentDescription("Store is open").assertDoesNotExist()
         // The clock is held, or the egg would play to its end before it is looked for (Compose testing: mainClock.autoAdvance).
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithContentDescription("Up to date").performClick()
-        compose.mainClock.advanceTimeBy(300)
+        compose.onNodeWithText("Installed").performClick()
+        // Frame by frame until it shows (https://developer.android.com/develop/ui/compose/testing/synchronization, advanceTimeUntil):
+        // one jump of 300 ms skipped the frame the egg is composed in.
+        compose.mainClock.advanceTimeUntil(1000) {
+            compose.onAllNodesWithContentDescription("Store is open").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithContentDescription("Store is open").assertExists()
         // It leaves by itself.
         compose.mainClock.advanceTimeBy(4000)

@@ -2,7 +2,6 @@
     <string name="app_name">Store</string>
 
     <!-- Home -->
-    <string name="home_title">Store</string>
     <string name="settings">Settings</string>
     <string name="back">Back</string>
     <string name="retry">Retry</string>
@@ -14,7 +13,6 @@
     <string name="update_all_size">Update all, %1$s</string>
     <string name="installed_title">Installed</string>
     <string name="available_title">Available</string>
-    <string name="up_to_date">Up to date</string>
     <string name="empty_title">Store</string>
     <string name="empty_none">No app to list yet.</string>
 

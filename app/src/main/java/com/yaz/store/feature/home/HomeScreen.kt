@@ -26,15 +26,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -54,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,12 +75,11 @@ import com.yaz.store.ui.component.BannerAction
 import com.yaz.store.ui.component.EmptyZone
 import com.yaz.store.ui.component.FloatingAction
 import com.yaz.store.ui.component.FloatingFrame
-import com.yaz.store.ui.component.TopActionSize
+import com.yaz.store.ui.component.FloatingTop
 import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.ScreenBanner
-import kotlinx.coroutines.launch
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.navigationBarBottom
 import com.yaz.store.ui.component.rememberRefreshHaptics
@@ -190,31 +187,30 @@ fun HomeContent(
     val error = state.error
 
     val homeList = androidx.compose.foundation.lazy.rememberLazyListState()
-    // "N updates" scrolls the list to the Updates zone, after the error banner and the orphan rows (HomeList's item order);
-    // the tap's haptic tick comes from StatusPill's sinkClickable.
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val showUpdates: () -> Unit = {
-        val index = (if (error != null) 1 else 0) + orphans.size
-        scope.launch { homeList.animateScrollToItem(index) }
+    // The width class is read from the window, as the top line's title depends on it (two columns or not): Compose's
+    // LocalWindowInfo.containerDpSize (androidx compose/ui/platform/WindowInfo.kt), the window Home fills, with no
+    // BoxWithConstraints (SubcomposeLayout) around the whole screen.
+    val wide = WidthClass.of(LocalWindowInfo.current.containerDpSize.width) == WidthClass.EXPANDED
+    val first = firstSection(state.apps, wide)
+    val firstTitle = when (first) {
+        HomeSection.UPDATES -> stringResource(R.string.updates_title)
+        HomeSection.INSTALLED -> stringResource(R.string.installed_title)
+        HomeSection.AVAILABLE -> stringResource(R.string.available_title)
+        HomeSection.NONE -> null
     }
     FloatingFrame(
         bottom = navigationBarBottom(),
         scroll = homeList,
         top = {
-            // FloatingTop's row (ui/component/FloatingPane.kt: same height and padding) with the title at the start instead of centred
-            // between two fixed slots, as Apple's large titles (https://developer.apple.com/design/human-interface-guidelines/navigation-bars)
-            // and Material 3's start-aligned top app bar title (https://m3.material.io/components/app-bars/specs); the action stays at the end.
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = TopActionSize + 16.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(Modifier.weight(1f).padding(end = 12.dp), contentAlignment = Alignment.CenterStart) {
-                    StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen, showUpdates)
-                }
-                Box(Modifier.size(TopActionSize), contentAlignment = Alignment.Center) {
-                    FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings)
-                }
-            }
+            // Home's top line is the shared FloatingTop (ui/component/FloatingPane.kt, Files' BrowseScreen.kt frame): the first
+            // section's title centred between two fixed action slots, Settings at the end. No "Store" above it and no state mark:
+            // the iOS App Store's account page leads with "Updates", Google Play's "Manage apps & device" opens on its updates,
+            // GrapheneOS' AppStore has a plain toolbar title. The title is HomeTitle (the easter egg's taps) in the centre slot.
+            FloatingTop(
+                title = null,
+                trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) },
+                center = firstTitle?.let { text -> { HomeTitle(text) { point -> egg = point } } }
+            )
         },
         overlay = { egg?.let { StoreEgg(it) { egg = null } } }
     ) { padding ->
@@ -246,13 +242,31 @@ fun HomeContent(
                 }
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                    BoxWithConstraints(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
-                        val wide = WidthClass.of(maxWidth) == WidthClass.EXPANDED
-                        HomeList(state, orphans, padding, wide, actions, onUpdateAll, onCancelAll, onRetry, seen, homeList)
+                    Box(Modifier.widthIn(max = 1100.dp).fillMaxSize()) {
+                        HomeList(state, orphans, padding, wide, first, actions, onUpdateAll, onCancelAll, onRetry, seen, homeList)
                     }
                 }
             }
         }
+    }
+}
+
+/** The section whose title sits on Home's top line, or none. */
+internal enum class HomeSection { UPDATES, INSTALLED, AVAILABLE, NONE }
+
+/**
+ * The first section of the page: Updates when any waits, else Installed, else Available. On a tablet showing Installed and Available side
+ * by side (and no update) there is none: each column keeps its own centred title, so both lists start at the same height.
+ */
+internal fun firstSection(apps: List<AppStatus>, wide: Boolean): HomeSection {
+    val installed = HomeModel.installed(apps).isNotEmpty()
+    val available = HomeModel.available(apps).isNotEmpty()
+    return when {
+        HomeModel.updates(apps).isNotEmpty() -> HomeSection.UPDATES
+        installed && available && wide -> HomeSection.NONE
+        installed -> HomeSection.INSTALLED
+        available -> HomeSection.AVAILABLE
+        else -> HomeSection.NONE
     }
 }
 
@@ -262,6 +276,7 @@ private fun HomeList(
     orphans: List<InstallJob>,
     padding: PaddingValues,
     wide: Boolean,
+    first: HomeSection,
     actions: CardActions,
     onUpdateAll: () -> Unit,
     onCancelAll: () -> Unit,
@@ -298,7 +313,7 @@ private fun HomeList(
         items(orphans, key = { "job-${it.serial}" }) { OrphanRow(it, actions.onCancel, side) }
         if (updates.isNotEmpty()) {
             item("updates") {
-                UpdatesZone(updates, state.jobs, state.details, actions, onUpdateAll, onCancelAll, seen, side)
+                UpdatesZone(updates, state.jobs, state.details, actions, onUpdateAll, onCancelAll, seen, side, showTitle = first != HomeSection.UPDATES)
             }
         }
         item("lists") {
@@ -311,8 +326,12 @@ private fun HomeList(
                 }
             } else {
                 Column(side.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    if (installed.isNotEmpty()) AppList(R.string.installed_title, installed, state.jobs, actions, seen, state.details)
-                    if (available.isNotEmpty()) AppList(R.string.available_title, available, state.jobs, actions, seen, state.details)
+                    if (installed.isNotEmpty()) {
+                        AppList(R.string.installed_title, installed, state.jobs, actions, seen, state.details, showTitle = first != HomeSection.INSTALLED)
+                    }
+                    if (available.isNotEmpty()) {
+                        AppList(R.string.available_title, available, state.jobs, actions, seen, state.details, showTitle = first != HomeSection.AVAILABLE)
+                    }
                 }
             }
         }

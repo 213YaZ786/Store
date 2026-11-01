@@ -1,7 +1,6 @@
 package com.yaz.store.feature.eggs
 
-// The easter egg of Store: "Up to date" tapped seven times (as Android's version is, https://developer.android.com/about/versions) while every app is
-// current. The shop opens: the storefront of Store's loading mark pops in at the middle of the window on a spring and a wave of tinted glass
+// The easter egg of Store: Home's top title tapped seven times (as Android's version is, https://developer.android.com/about/versions). The shop opens: the storefront of Store's loading mark pops in at the middle of the window on a spring and a wave of tinted glass
 // with Android 12's sparkles leaves the row that was tapped, then both fade. Only the base kit's own pieces are used: LoadingMark,
 // GlassWave and drawGlassWave (Dialer's hang up wave, ui/component/GlassWave.kt, itself AOSP's RippleShader in SparkleRipple.kt) and the
 // haptics; the animation is Compose's Animatable with a spring and a tween (https://developer.android.com/develop/ui/compose/animation/value-based).
