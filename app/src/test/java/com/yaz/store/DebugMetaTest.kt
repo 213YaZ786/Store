@@ -44,6 +44,25 @@ class DebugMetaTest {
         assertEquals("from the repo", DebugMeta(files("not json")).apply(listOf(entry("Dialer"))).single().description)
     }
 
+    // Source: the tests above (https://github.com/213YaZ786/Store, app/src/test/java/com/yaz/store/DebugMetaTest.kt) and JUnit 4's TemporaryFolder
+    // rule (https://github.com/junit-team/junit4/wiki/Rules#temporaryfolder-rule): the layers of an icon under debug-icons/<repo>/layers/.
+    @Test
+    fun layersByRepoAndPlainName() {
+        val dir = files(null)
+        File(dir, "debug-icons/Dialer/layers").mkdirs()
+        File(dir, "debug-icons/Dialer/layers/icon-layers.json").writeText("{}")
+        File(dir, "debug-icons/Dialer/layers/dial_body.png").writeBytes(byteArrayOf(7))
+        File(dir, "debug-icons/Dialer/layers/big.png").writeBytes(ByteArray(600 * 1024))
+        val meta = DebugMeta(dir)
+        assertArrayEquals("{}".toByteArray(), meta.layers(entry("Dialer")))
+        assertArrayEquals(byteArrayOf(7), meta.layerPng(entry("Dialer"), "dial_body.png"))
+        assertNull(meta.layerPng(entry("Dialer"), "big.png"))
+        assertNull(meta.layerPng(entry("Dialer"), "../layers/dial_body.png"))
+        assertNull(meta.layerPng(entry("Dialer"), "missing.png"))
+        assertNull(meta.layers(entry("SMS")))
+        assertNull(meta.layers(entry("..")))
+    }
+
     @Test
     fun aPictureOnlyByItsPlainName() {
         val dir = files("""{"A":{"icon":"../debug-meta.json"},"B":{"icon":"big.png"},"C":{"icon":"missing.png"}}""", "big.png" to ByteArray(600 * 1024))

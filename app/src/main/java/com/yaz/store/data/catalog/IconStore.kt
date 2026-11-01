@@ -18,6 +18,53 @@ class IconStore(
 
     // Repos asked for their icon since the process started: one conditional request per repo and opening.
     private val asked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val askedLayers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** The published layers of an icon and their pictures' bytes, [pictures] in the order of [icon]'s layers. */
+    class LayerFiles(val icon: IconLayers, val pictures: List<ByteArray>)
+
+    // Source: bytes below and releaseIcon (this app's data/catalog/IconStore.kt): the overlay first (debug builds), then the repo's own
+    // icon-layers.json; each picture read from a file named by its SHA-256 (content-addressed, as GrapheneOS' App Store keeps what it downloads by hash,
+    // https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/core/Repo.kt), fetched only when missing, kept only when its
+    // SHA-256 is the one the list names. Null when the repo publishes no layers, the list is not as published, or any picture is missing or wrong:
+    // the screen keeps icon.png. Blocking: off the main thread.
+    fun layers(entry: StoreEntry): LayerFiles? {
+        val seam = overlay
+        if (seam != null) {
+            val text = seam.layers(entry)
+            if (text != null) {
+                val icon = IconLayers.parse(String(text, Charsets.UTF_8)) ?: return null
+                val pictures = icon.layers.map { seam.layerPng(entry, it.png) ?: return null }
+                return LayerFiles(icon, pictures)
+            }
+        }
+        val text = repoLayers(entry.repo) ?: return null
+        val icon = IconLayers.parse(String(text, Charsets.UTF_8)) ?: return null
+        val pictures = icon.layers.map { layerPicture(entry.repo, it) ?: return null }
+        return LayerFiles(icon, pictures)
+    }
+
+    // Source: releaseIcon below (this app's data/catalog/IconStore.kt), the file named by the picture's SHA-256 instead of the tag. The name comes
+    // from the parser's allow-list (64 lower case hex), never from the file's text as it stands.
+    private fun layerPicture(repo: String, layer: IconLayer): ByteArray? {
+        val file = File(dir, "layer-${layer.sha256}.png")
+        if (file.isFile && file.length() in 1..MAX_ICON) {
+            runCatching { file.readBytes() }.getOrNull()?.takeIf { ApkInfoCodec.sha256Hex(it) == layer.sha256 }?.let { return it }
+        }
+        val bytes = try {
+            net.getBytes(ReleaseNet.repoLayerUrl(repo, layer.png), MAX_ICON)
+        } catch (e: NetError) {
+            return null
+        }
+        if (ApkInfoCodec.sha256Hex(bytes) != layer.sha256) return null
+        runCatching {
+            dir.mkdirs()
+            val temporary = File(dir, file.name + ".part")
+            temporary.writeBytes(bytes)
+            if (!temporary.renameTo(file)) temporary.delete()
+        }
+        return bytes
+    }
 
     /**
      * The bytes of the icon of [entry]: the repo's own (the newest), else icon.png of its release, or null when it has none or cannot be read
@@ -33,23 +80,33 @@ class IconStore(
     // https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate), on the
     // F-Droid layout path every repo of ours publishes (https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots), kept per repo
     // on disk as releaseIcon keeps a tag's. Asked once per opening; offline or limited, the stored file stays; a 404 means no icon in the repo.
+    private fun repoIcon(repo: String): ByteArray? =
+        conditional(repo, ApkInfoCodec.sha256Hex("repo:$repo".toByteArray()), "png", ReleaseNet.repoIconUrl(repo), MAX_ICON, asked)
+
+    // Source: repoIcon above and the same GitHub conditional request
+    // (https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate): the list of
+    // layers of the repo's icon, the same file per repo, another name, a cap of 16 KiB, asked once per opening as well.
+    private fun repoLayers(repo: String): ByteArray? =
+        conditional(repo, ApkInfoCodec.sha256Hex("layers:$repo".toByteArray()), "json", ReleaseNet.repoLayersUrl(repo), IconLayers.MAX_JSON.toLong(), askedLayers)
+
+    // Source: repoIcon's former body (this app's data/catalog/IconStore.kt), the GitHub conditional request above made one function for both files:
+    // [name] the stored file's name, [extension] its kind, [seen] the repos asked since the start.
     @Synchronized
-    private fun repoIcon(repo: String): ByteArray? {
-        val name = ApkInfoCodec.sha256Hex("repo:$repo".toByteArray())
-        val file = File(dir, "$name.png")
+    private fun conditional(repo: String, name: String, extension: String, url: String, max: Long, seen: MutableSet<String>): ByteArray? {
+        val file = File(dir, "$name.$extension")
         val tag = File(dir, "$name.etag")
-        val stored = if (file.isFile && file.length() in 1..MAX_ICON) runCatching { file.readBytes() }.getOrNull() else null
-        if (!asked.add(repo)) return stored
+        val stored = if (file.isFile && file.length() in 1..max) runCatching { file.readBytes() }.getOrNull() else null
+        if (!seen.add(repo)) return stored
         val sent = if (stored != null) runCatching { tag.readText() }.getOrNull() else null
         val fresh = try {
-            net.getIfChanged(ReleaseNet.repoIconUrl(repo), MAX_ICON, sent) ?: return stored
+            net.getIfChanged(url, max, sent) ?: return stored
         } catch (e: NetError) {
             when (e.kind) {
                 NetError.Kind.NOT_FOUND -> {
                     file.delete()
                     tag.delete()
                 }
-                NetError.Kind.OFFLINE, NetError.Kind.RATE_LIMITED, NetError.Kind.METERED -> asked.remove(repo)
+                NetError.Kind.OFFLINE, NetError.Kind.RATE_LIMITED, NetError.Kind.METERED -> seen.remove(repo)
                 NetError.Kind.REFUSED -> Unit
             }
             return if (e.kind == NetError.Kind.NOT_FOUND) null else stored

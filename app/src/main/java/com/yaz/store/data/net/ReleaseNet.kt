@@ -399,26 +399,54 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         // (https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots). The address of the icon in the source tree of [repo], on its default branch.
         fun repoIconUrl(repo: String): String = "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$REPO_ICON_PATH"
 
+        private const val LAYERS_DIR = "fastlane/metadata/android/en-US/images/layers/"
+        private const val LAYERS_JSON = "icon-layers.json"
+        // A layer file by the published rule: lower-case letters, digits, '_', then ".png" (the file name of icon-layers.json is no layer).
+        private val LAYER_PNG = Regex("[a-z0-9_]{1,48}\\.png")
+
+        /** Whether [name] may name a layer picture of an icon: ^[a-z0-9_]{1,48}\.png$. */
+        fun validLayerPng(name: String): Boolean = LAYER_PNG.matches(name)
+
+        // Source: repoIconUrl above (GitHub's raw link, https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files,
+        // with the F-Droid layout path). The address of the list of layers of the icon in the source tree of [repo], on its default branch.
+        fun repoLayersUrl(repo: String): String = "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$LAYERS_DIR$LAYERS_JSON"
+
+        // Source: repoIconUrl above. The address of the layer picture [png] (validLayerPng) in the source tree of [repo]; anything else is refused.
+        fun repoLayerUrl(repo: String, png: String): String {
+            require(validLayerPng(png)) { "bad layer name" }
+            return "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$LAYERS_DIR$png"
+        }
+
         // Source: the same allow-list shape as releaseFile and latestApp above (the update kit's fromRepo), after GitHub's raw link
         // (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files).
+        // The repo and the file path of an address of exactly three shapes: the icon, the list of layers, one layer picture.
         // "", owner, repo, raw, HEAD, fastlane, metadata, android, en-US, images, icon.png
-        private fun repoIcon(parts: List<String>): String? {
-            if (parts.size != 11 || parts[0].isNotEmpty() || parts[1] != OWNER || parts[3] != "raw" || parts[4] != "HEAD") return null
-            if (parts.subList(5, 11).joinToString("/") != REPO_ICON_PATH) return null
-            return parts[2].takeIf(::validRepo)
+        // "", owner, repo, raw, HEAD, fastlane, metadata, android, en-US, images, layers, icon-layers.json or <name>.png
+        private fun repoFile(parts: List<String>): Pair<String, String>? {
+            if (parts.size < 11 || parts[0].isNotEmpty() || parts[1] != OWNER || parts[3] != "raw" || parts[4] != "HEAD") return null
+            val path = parts.subList(5, parts.size).joinToString("/")
+            val allowed = when (parts.size) {
+                11 -> path == REPO_ICON_PATH
+                12 -> path.startsWith(LAYERS_DIR) && (parts[11] == LAYERS_JSON || validLayerPng(parts[11]))
+                else -> false
+            }
+            if (!allowed) return null
+            return parts[2].takeIf(::validRepo)?.let { it to path }
         }
+
+        private fun repoIcon(parts: List<String>): String? = repoFile(parts)?.first
 
         // Source: the check of tagOfLocation above (the update kit's first-hop rule) applied to GitHub's raw redirect, which answers 302 to
         // raw.githubusercontent.com/<owner>/<repo>/<commit or refs/heads/branch>/<path> (docs: https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files).
         /**
-         * Where the redirect of a repo icon address leads: exactly raw.githubusercontent.com/<owner>/<same repo>/<ref>/<the icon path>,
+         * Where the redirect of a repo icon address leads: exactly raw.githubusercontent.com/<owner>/<same repo>/<ref>/<the same file path as [start]>,
          * HTTPS, default port, no query, no fragment, no dots segment in the ref. [start] is the address the read began with.
          */
         internal fun rawIconHop(start: URL, hop: URL): Boolean {
             if (!hostOk(hop) || hop.host.lowercase() != RAW_HOST || hop.query != null || hop.ref != null) return false
-            val repo = repoIcon(start.path.split('/')) ?: return false
+            val (repo, file) = repoFile(start.path.split('/')) ?: return false
             val prefix = "/$OWNER/$repo/"
-            val suffix = "/$REPO_ICON_PATH"
+            val suffix = "/$file"
             val path = hop.path
             if (!path.startsWith(prefix) || !path.endsWith(suffix) || path.length <= prefix.length + suffix.length - 1) return false
             val ref = path.substring(prefix.length, path.length - suffix.length)

@@ -9,4 +9,11 @@ interface CatalogOverlay {
 
     /** The picture bytes the overlay has for [entry], or null; never decoded here (SafeImages does it). */
     fun icon(entry: StoreEntry): ByteArray?
+
+    // Source: icon above, the same seam for the layered icon (https://github.com/213YaZ786/Store, data/catalog/CatalogOverlay.kt).
+    /** The text of icon-layers.json (as bytes) the overlay has for [entry], or null; parsed by IconLayers.parse like the published one. */
+    fun layers(entry: StoreEntry): ByteArray?
+
+    /** The bytes of the layer picture [png] the overlay has for [entry], or null; never decoded here (SafeImages does it). */
+    fun layerPng(entry: StoreEntry, png: String): ByteArray?
 }

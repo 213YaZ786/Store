@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "ground": {"day": "system_accent1_50", "night": "system_accent1_50"},
+  "layers": [
+    {"png": "store_body.png", "sha256": "6736468772c71c3ea4ecee35ca346c1ea8a3e40d37337804b464adfbb1800949", "day": "system_accent1_500", "night": "system_accent1_500"},
+    {"png": "store_shine.png", "sha256": "0da55c1780fa5bcfa06cd0af8984f5d237ef6db63cff85cd8c070b44c6be85c0"},
+    {"png": "store_front.png", "sha256": "4ea9aca8143c70558965937143c0b48ad962277a0c27ec0b17ff62357d6dabf0"}
+  ]
+}

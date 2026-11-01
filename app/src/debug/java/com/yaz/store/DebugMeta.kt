@@ -1,6 +1,7 @@
 package com.yaz.store
 
 import com.yaz.store.data.catalog.CatalogOverlay
+import com.yaz.store.data.catalog.IconLayers
 import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.net.ReleaseNet
@@ -40,6 +41,30 @@ class DebugMeta(private val filesDir: File) : CatalogOverlay {
         if (name.isEmpty() || name.any { it == '/' || it == '\\' } || name.startsWith(".")) return null
         val file = File(File(filesDir, "debug-icons"), name)
         if (!file.isFile || file.length() !in 1..IconStore.MAX_ICON) return null
+        return runCatching { file.readBytes() }.getOrNull()
+    }
+
+    // Source: icon above (https://github.com/213YaZ786/Store, app/src/debug/java/com/yaz/store/DebugMeta.kt): the same reading, in
+    // files/debug-icons/<repo>/layers/. The repo and the names are plain (the repo by ReleaseNet.validRepo, a picture by ReleaseNet.validLayerPng),
+    // the sizes the caps of IconStore and IconLayers.
+    private fun layerFile(entry: StoreEntry, name: String): File? {
+        if (!ReleaseNet.validRepo(entry.repo)) return null
+        val file = File(File(File(File(filesDir, "debug-icons"), entry.repo), "layers"), name)
+        return file.takeIf { it.isFile }
+    }
+
+    // Source: icon above (https://github.com/213YaZ786/Store, app/src/debug/java/com/yaz/store/DebugMeta.kt).
+    override fun layers(entry: StoreEntry): ByteArray? {
+        val file = layerFile(entry, "icon-layers.json") ?: return null
+        if (file.length() !in 1..IconLayers.MAX_JSON) return null
+        return runCatching { file.readBytes() }.getOrNull()
+    }
+
+    // Source: icon above (https://github.com/213YaZ786/Store, app/src/debug/java/com/yaz/store/DebugMeta.kt).
+    override fun layerPng(entry: StoreEntry, png: String): ByteArray? {
+        if (!ReleaseNet.validLayerPng(png)) return null
+        val file = layerFile(entry, png) ?: return null
+        if (file.length() !in 1..IconStore.MAX_ICON) return null
         return runCatching { file.readBytes() }.getOrNull()
     }
 }
