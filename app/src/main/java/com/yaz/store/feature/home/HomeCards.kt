@@ -2,14 +2,14 @@ package com.yaz.store.feature.home
 
 // The rows of Home's two lists and the one state button of each. Sources:
 // - the iOS App Store's lists (Apple's Apps and Updates tabs, seen for real): one compact row per app, the icon on the left, the name, a
-//   one-line subtitle, the action button on the right, a hairline between rows that starts after the icon; Google Play's "Manage apps &
+//   one-line subtitle, the action button on the right, no line between rows here (ours: gaps only); Google Play's "Manage apps &
 //   device" has the same compact rows;
 // - GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/PackageListAdapter.kt):
 //   every app listed once with a single state button (Install, Update, Open) on its row, the whole row opening the app's page;
 // - komi-store (Apache-2.0, https://github.com/komi-store/komi-store, feature/apps/presentation/.../components/AppItemCard.kt):
 //   the icon, the name, a short description and an install button, whose body opens the details page;
-// - Material 3's list anatomy (https://m3.material.io/components/lists/specs: leading image, headline, supporting text, trailing element,
-//   divider inset to the text) and Compose's HorizontalDivider (https://developer.android.com/develop/ui/compose/components/divider);
+// - Material 3's list anatomy (https://m3.material.io/components/lists/specs: leading image, headline, supporting text, trailing element)
+//   as segmented tiles (https://m3.material.io/components/lists/guidelines, "use gaps for contained lists"; ui/component/SegmentedShapes.kt);
 //   LinearProgressIndicator for the download (https://developer.android.com/develop/ui/compose/components/progress).
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
@@ -26,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import android.text.format.Formatter
 import androidx.compose.ui.platform.LocalContext
 import com.yaz.store.data.catalog.AppState
@@ -42,9 +44,11 @@ import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.ui.component.BoldButton
 import com.yaz.store.ui.component.QuietButton
+import com.yaz.store.ui.component.SegmentedGap
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.entrancePop
-import com.yaz.store.ui.component.sinkClickable
+import com.yaz.store.ui.component.rememberHaptics
+import com.yaz.store.ui.component.segmentedShape
 
 /** What a row does with a tap, kept together so the screen passes one object down. */
 class CardActions(
@@ -54,7 +58,12 @@ class CardActions(
     val onCancel: (String) -> Unit
 )
 
-/** A list's heading, then its apps as rows in one alphabetical zone. */
+/**
+ * A list's heading, always shown, centred on the page (no zone: a title does nothing), then its apps as segmented tiles, alphabetical:
+ * each row its own tile, SegmentedGap between them, no lines (androidx material3 ListItemDefaults.segmentedShapes, see
+ * ui/component/SegmentedShapes.kt; Android 16 Settings lists look the same). In two columns both lists have a title, so both start at
+ * the same height.
+ */
 @Composable
 internal fun AppList(
     title: Int,
@@ -67,41 +76,51 @@ internal fun AppList(
 ) {
     val context = LocalContext.current
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            stringResource(title),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 4.dp, top = 6.dp)
-        )
-        ZoneSurface(shape = ShapeDefaults.ExtraLarge, modifier = Modifier.fillMaxWidth().entrancePop(seen, "list/$title")) {
-            Column {
-                HomeModel.sorted(apps).forEachIndexed { index, status ->
-                    if (index > 0) RowDivider()
-                    AppRow(
-                        status,
-                        HomeModel.jobOf(status, jobs),
-                        actions,
-                        subtitle = status.entry.description,
-                        // No version numbers (the user, 2026-10-30): the size of the download, only when an update waits.
-                        size = if (status.state == AppState.UPDATE) HomeModel.sizeOf(status, details)?.let { Formatter.formatShortFileSize(context, it) } else null
-                    )
-                }
+        SectionTitle(title)
+        val sorted = HomeModel.sorted(apps)
+        Column(verticalArrangement = Arrangement.spacedBy(SegmentedGap)) {
+            sorted.forEachIndexed { index, status ->
+                AppRow(
+                    status,
+                    HomeModel.jobOf(status, jobs),
+                    actions,
+                    subtitle = status.entry.description,
+                    // No version numbers (the user, 2026-10-30): the size of the download, only when an update waits.
+                    size = if (status.state == AppState.UPDATE) HomeModel.sizeOf(status, details)?.let { Formatter.formatShortFileSize(context, it) } else null,
+                    shape = segmentedShape(index, sorted.size),
+                    seen = seen,
+                    popKey = "row/$title/${status.entry.packageName}",
+                    popIndex = index
+                )
             }
         }
     }
 }
 
-// Where the text of a row starts: 14 dp of padding, the 56 dp icon and a 12 dp gap. The hairline between two rows starts there too.
-private val TextStart = 82.dp
-
+/**
+ * A section's title on the page: centred, titleLarge, in the accent, a heading for TalkBack
+ * (https://developer.android.com/develop/ui/compose/accessibility/semantics, heading()); Modules' SettingsSectionTitle centres its
+ * titles the same way.
+ */
 @Composable
-internal fun RowDivider() {
-    HorizontalDivider(Modifier.padding(start = TextStart), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+internal fun SectionTitle(title: Int, modifier: Modifier = Modifier) {
+    Text(
+        stringResource(title),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.primary,
+        textAlign = TextAlign.Center,
+        modifier = modifier.fillMaxWidth().padding(top = 6.dp).semantics { heading() }
+    )
 }
 
+// Where the text of a row starts: 14 dp of padding, the 56 dp icon and a 12 dp gap.
+private val TextStart = 82.dp
+
 /**
- * One app: icon, name, its words, the update's size when given, the state button on the right; the whole row opens the app's page (a
- * transparent tap target, no second zone). [below] sits under the row, aligned with the text; [beforeButton] sits just before the button.
+ * One app as a tile: icon, name, its words, the update's size when given, the state button on the right; the whole tile is the tap that
+ * opens the app's page, so it is its own zone, of [shape] (segmentedShape). Its entrance pop ([seen], [popKey], [popIndex]) and its press
+ * ripple follow that shape (ZoneSurface's clickable Surface clips to it). [below] sits under the row, aligned with the text;
+ * [beforeButton] sits just before the button.
  */
 @Composable
 internal fun AppRow(
@@ -110,14 +129,25 @@ internal fun AppRow(
     actions: CardActions,
     subtitle: String,
     size: String?,
+    shape: Shape,
+    seen: MutableSet<String>,
+    popKey: String,
+    popIndex: Int,
     below: (@Composable ColumnScope.() -> Unit)? = null,
     beforeButton: (@Composable () -> Unit)? = null
 ) {
     val active = job != null && job.step.active
+    val haptics = rememberHaptics()
+    ZoneSurface(
+        shape = shape,
+        onClick = {
+            haptics.tick()
+            actions.onPage(status)
+        },
+        modifier = Modifier.fillMaxWidth().entrancePop(seen, popKey, popIndex)
+    ) {
     Column(
-        Modifier.fillMaxWidth()
-            .sinkClickable(status.entry.label, depth = 0.98f) { actions.onPage(status) }
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -162,6 +192,7 @@ internal fun AppRow(
                 below?.invoke(this)
             }
         }
+    }
     }
 }
 

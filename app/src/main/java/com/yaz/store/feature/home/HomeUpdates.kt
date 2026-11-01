@@ -1,6 +1,6 @@
 package com.yaz.store.feature.home
 
-// The Updates zone on top of Home and the "Up to date" state. Sources:
+// The Updates section on top of Home (segmented tiles under a centred title) and Home's title with its state mark. Sources:
 // - Google Play's "Manage apps & device" updates and GrapheneOS' App Store updates screen (MIT, https://github.com/GrapheneOS/AppStore,
 //   app/src/main/java/app/grapheneos/apps/ui/UpdatesScreen.kt): one "Update all" with the total size, one row per app with its versions,
 //   its size and its own Update;
@@ -37,20 +37,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import com.yaz.store.R
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.ReleaseDetails
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.ui.component.QuietButton
-import com.yaz.store.ui.component.ZoneSurface
+import com.yaz.store.ui.component.SegmentedGap
 import com.yaz.store.ui.component.entrancePop
+import com.yaz.store.ui.component.segmentedShape
 import com.yaz.store.ui.component.sinkClickable
 import com.yaz.store.ui.icon.AppIcons
 
-/** The Updates zone: Update all (or Cancel all while the queue runs), then one row per app with an update. */
+/**
+ * The Updates section: its title centred on the page (no zone), Update all (or Cancel all while the queue runs) under it, then one
+ * segmented tile per app with an update (ui/component/SegmentedShapes.kt, as AppList).
+ */
 @Composable
 internal fun UpdatesZone(
     updates: List<AppStatus>,
@@ -66,56 +76,56 @@ internal fun UpdatesZone(
     val running = jobs.any { it.step.active }
     val waiting = updates.count { u -> jobs.none { it.entry.packageName == u.entry.packageName && it.step.active } }
     val total = HomeModel.totalSize(updates, details)
-    ZoneSurface(shape = ShapeDefaults.ExtraLarge, modifier = modifier.fillMaxWidth().entrancePop(seen, "updates")) {
-        Column(Modifier.padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                stringResource(R.string.updates_title),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 14.dp)
-            )
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.entrancePop(seen, "updates"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionTitle(R.string.updates_title)
             val updateAll = if (total != null) stringResource(R.string.update_all_size, Formatter.formatShortFileSize(context, total))
             else stringResource(R.string.update_all)
             val cancelAll = stringResource(R.string.cancel_all)
             if (waiting > 0 && running) {
                 // Both side by side when they fit, else stacked full width.
                 TwoActions(
-                    updateAll, cancelAll, Modifier.padding(horizontal = 14.dp),
+                    updateAll, cancelAll,
                     first = { UpdateButton(onClick = onUpdateAll, label = updateAll, modifier = it) },
                     second = { QuietButton(onClick = onCancelAll, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(cancelAll) } }
                 )
             } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (waiting > 0) UpdateButton(onClick = onUpdateAll, label = updateAll, modifier = Modifier.weight(1f))
                     if (running) QuietButton(onClick = onCancelAll, modifier = Modifier.weight(1f), shape = ShapeDefaults.Large) { Text(cancelAll) }
                 }
             }
-            Column {
-                updates.forEachIndexed { index, status ->
-                    if (index > 0) RowDivider()
-                    UpdateRow(status, HomeModel.jobOf(status, jobs), HomeModel.sizeOf(status, details), actions)
-                }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(SegmentedGap)) {
+            updates.forEachIndexed { index, status ->
+                // Icon, name, its words and the size of the download, no version numbers (the user, 2026-10-30), then Update; the tile
+                // itself opens the app's page.
+                AppRow(
+                    status,
+                    HomeModel.jobOf(status, jobs),
+                    actions,
+                    subtitle = status.entry.description,
+                    size = HomeModel.sizeOf(status, details)?.let { Formatter.formatShortFileSize(context, it) },
+                    shape = segmentedShape(index, updates.size),
+                    seen = seen,
+                    popKey = "update/${status.entry.packageName}",
+                    popIndex = index
+                )
             }
         }
     }
 }
 
-@Composable
-private fun UpdateRow(status: AppStatus, job: InstallJob?, size: Long?, actions: CardActions) {
-    val context = LocalContext.current
-    // Icon, name, its words and the size of the download, no version numbers (the user, 2026-10-30), then Update; the row itself
-    // opens the app's page.
-    AppRow(status, job, actions, subtitle = status.entry.description, size = size?.let { Formatter.formatShortFileSize(context, it) })
-}
-
 /**
- * The state of the apps beside the title, in the floating top pane: "N updates" when some wait, "Up to date" when none does. The App
- * Store on iOS puts its account beside the large title, and Google Play's "Manage apps & device" says "Updates available" at the head of
- * its list; GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/UpdatesScreen.kt)
- * counts the updates too. Here the state sits beside the word "Store" on the title's line (FloatingTop's center slot); the count is
- * a plural string (https://developer.android.com/develop/ui/compose/resources#string-resources, pluralStringResource).
- * "Up to date" tapped seven times in a row plays the easter egg (feature/eggs); [onEgg] gets the middle of the pill in the window, where
- * the wave starts. The count starts again after two seconds without a tap, as Android's version does.
+ * The title of Home's top line, "Store", larger and at the start, with the state of the apps right after it: "N updates" when some wait,
+ * "Up to date" when none does. Apple's HIG large titles sit at the start of the navigation bar
+ * (https://developer.apple.com/design/human-interface-guidelines/navigation-bars) and the iOS App Store puts its account at the other end;
+ * Material 3's top app bars have a start-aligned title (https://m3.material.io/components/app-bars/specs). Google Play's "Manage apps &
+ * device" says "Updates available" at the head of its list; GrapheneOS' App Store (MIT, https://github.com/GrapheneOS/AppStore,
+ * app/src/main/java/app/grapheneos/apps/ui/UpdatesScreen.kt) counts the updates too. The count is a plural string
+ * (https://developer.android.com/develop/ui/compose/resources#string-resources, pluralStringResource). "Up to date" tapped seven times
+ * in a row plays the easter egg (feature/eggs); [onEgg] gets the middle of the pill in the window, where the wave starts. The count
+ * starts again after two seconds without a tap, as Android's version does.
  */
 @Composable
 internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Unit, seen: MutableSet<String>, onShowUpdates: () -> Unit = {}) {
@@ -127,10 +137,10 @@ internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Un
     if (updates > 0) {
         val count = pluralStringResource(R.plurals.notice_updates, updates, updates)
         Row(
-            Modifier.entrancePop(seen, "status").sinkClickable(count, depth = 0.97f, onClick = onShowUpdates).padding(8.dp),
+            Modifier.entrancePop(seen, "status").sinkClickable(count, depth = 0.97f, onClick = onShowUpdates).padding(end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+            TitleText(title, Modifier.weight(1f, fill = false))
             // TalkBack reads "Store, 1 update": the mark carries the words, the bare number is not read twice
             // (https://developer.android.com/develop/ui/compose/accessibility/semantics, clearAndSetSemantics).
             Icon(AppIcons.Warning, contentDescription = count, tint = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 8.dp).size(20.dp))
@@ -144,8 +154,26 @@ internal fun StatusPill(updates: Int, allCurrent: Boolean, onEgg: (Offset) -> Un
     } else if (allCurrent) {
         UpToDatePill(title, onEgg, seen)
     } else {
-        Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp))
+        TitleText(title, Modifier.padding(end = 8.dp, top = 8.dp, bottom = 8.dp))
     }
+}
+
+/**
+ * Home's title: headlineMedium in the accent, start-aligned, one line, and a word too wide for its room shrinks last, as FloatingTop's
+ * title does (Compose's TextAutoSize.StepBased, https://developer.android.com/develop/ui/compose/text/autosize); a heading for TalkBack
+ * (https://developer.android.com/develop/ui/compose/accessibility/semantics, heading()).
+ */
+@Composable
+private fun TitleText(title: String, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.headlineMedium
+    BasicText(
+        title,
+        style = style.copy(color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Start),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = style.fontSize, stepSize = 0.5.sp),
+        modifier = modifier.semantics { heading() }
+    )
 }
 
 /**
@@ -212,10 +240,10 @@ private fun UpToDatePill(title: String, onEgg: (Offset) -> Unit, seen: MutableSe
                     onEgg(middle)
                 }
             }
-            .padding(8.dp),
+            .padding(end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+        TitleText(title, Modifier.weight(1f, fill = false))
         Icon(AppIcons.CheckCircle, contentDescription = label, tint = Color(0xFF1E8E3E), modifier = Modifier.padding(start = 8.dp).size(20.dp))
     }
 }

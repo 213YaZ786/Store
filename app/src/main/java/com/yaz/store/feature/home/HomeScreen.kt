@@ -32,7 +32,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -75,7 +77,7 @@ import com.yaz.store.ui.component.BannerAction
 import com.yaz.store.ui.component.EmptyZone
 import com.yaz.store.ui.component.FloatingAction
 import com.yaz.store.ui.component.FloatingFrame
-import com.yaz.store.ui.component.FloatingTop
+import com.yaz.store.ui.component.TopActionSize
 import com.yaz.store.ui.component.LoadingMark
 import com.yaz.store.ui.component.PullIndicator
 import com.yaz.store.ui.component.QuietButton
@@ -199,14 +201,20 @@ fun HomeContent(
         bottom = navigationBarBottom(),
         scroll = homeList,
         top = {
-            FloatingTop(
-                title = null,
-                // No title: only the state of the apps, centred (the user, 2026-10-30; the status pill, HomeUpdates.kt).
-                center = {
+            // FloatingTop's row (ui/component/FloatingPane.kt: same height and padding) with the title at the start instead of centred
+            // between two fixed slots, as Apple's large titles (https://developer.apple.com/design/human-interface-guidelines/navigation-bars)
+            // and Material 3's start-aligned top app bar title (https://m3.material.io/components/app-bars/specs); the action stays at the end.
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = TopActionSize + 16.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.weight(1f).padding(end = 12.dp), contentAlignment = Alignment.CenterStart) {
                     StatusPill(HomeModel.updates(state.apps).size, HomeModel.allCurrent(state.apps), { egg = it }, seen, showUpdates)
-                },
-                trailing = { FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings) }
-            )
+                }
+                Box(Modifier.size(TopActionSize), contentAlignment = Alignment.Center) {
+                    FloatingAction(AppIcons.Settings, stringResource(R.string.settings), onSettings)
+                }
+            }
         },
         overlay = { egg?.let { StoreEgg(it) { egg = null } } }
     ) { padding ->
@@ -297,6 +305,7 @@ private fun HomeList(
             val both = installed.isNotEmpty() && available.isNotEmpty()
             if (wide && both) {
                 Row(side.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Both columns have their title, centred, so both lists start at the same height.
                     AppList(R.string.installed_title, installed, state.jobs, actions, seen, state.details, Modifier.weight(1f))
                     AppList(R.string.available_title, available, state.jobs, actions, seen, state.details, Modifier.weight(1f))
                 }

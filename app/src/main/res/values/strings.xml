@@ -47,15 +47,10 @@
     <string name="job_failed_default">The installation could not be done.</string>
 
     <!-- App page -->
-    <string name="page_package">Package</string>
-    <string name="page_description">About</string>
-    <string name="page_installed">Installed version</string>
-    <string name="page_offered">Latest version</string>
-    <string name="page_size">Download size</string>
+    <string name="page_version">Version</string>
+    <string name="page_size">Size</string>
     <string name="page_released">Released</string>
-    <string name="page_installer">Installer</string>
-    <string name="page_not_installed">Not installed</string>
-    <string name="page_source">Source</string>
+    <string name="page_source">Source code</string>
     <string name="installer_store">Store manages updates</string>
     <string name="installer_hand_over">Not managed by Store. Hand over to let Store update it.</string>
     <string name="installer_foreign">Signed by someone else, left alone</string>

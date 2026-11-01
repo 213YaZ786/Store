@@ -17,7 +17,7 @@ appId: com.yaz.store.debug
 - tapOn: "Dialer"
 - assertVisible: "com.yaz.dialer"
 - scrollUntilVisible:
-    element: "Source"
+    element: "Source code"
 - tapOn: "Back"
 - assertVisible: "Updates"
 # Settings.
