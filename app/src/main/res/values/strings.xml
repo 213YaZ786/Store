@@ -37,6 +37,7 @@
     <!-- What an entry of the queue is doing -->
     <string name="job_waiting">Waiting</string>
     <string name="job_downloading">Downloading %1$d%%</string>
+    <string name="job_downloading_size">Downloading %1$s of %2$s</string>
     <string name="job_checking">Checking</string>
     <string name="job_installing">Installing</string>
     <string name="job_confirm">Waiting for your confirmation</string>

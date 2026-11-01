@@ -42,7 +42,7 @@ class StoreBackend(
         return !capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
-    override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) {
+    override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit) {
         if (wifiOnly() && metered()) throw NetError(NetError.Kind.METERED, message = "metered")
         net.download(ReleaseNet.downloadUrl(repo, tag, apkName), into, onProgress, beforeRead)
     }

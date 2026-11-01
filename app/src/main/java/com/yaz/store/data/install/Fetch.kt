@@ -22,7 +22,7 @@ object Fetch {
      * Android level (StoreChecks.refusal). Throws [Refused] with the reason, or NetError; a cancel stops the download at its next read.
      * [onChecking] runs when the download has ended. The file is left in place for the caller to keep or delete.
      */
-    suspend fun checked(backend: InstallBackend, entry: StoreEntry, file: File, onProgress: (Float) -> Unit = {}, onChecking: () -> Unit = {}) {
+    suspend fun checked(backend: InstallBackend, entry: StoreEntry, file: File, onProgress: (done: Long, total: Long) -> Unit = { _, _ -> }, onChecking: () -> Unit = {}) {
         val apkName = entry.apkName ?: throw Refused("No APK for this phone.")
         // 1. The sum of this exact APK, then the file, then the sum of the file.
         val expected = StoreChecks.expectedSum(backend.sums(entry.repo, entry.tag), apkName) ?: throw Refused(StoreChecks.SUM_MISSING)

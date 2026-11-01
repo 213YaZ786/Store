@@ -10,7 +10,7 @@ package com.yaz.store.feature.home
 //   the icon, the name, a short description and an install button, whose body opens the details page;
 // - Material 3's list anatomy (https://m3.material.io/components/lists/specs: leading image, headline, supporting text, trailing element)
 //   as segmented tiles (https://m3.material.io/components/lists/guidelines, "use gaps for contained lists"; ui/component/SegmentedShapes.kt);
-//   LinearProgressIndicator for the download (https://developer.android.com/develop/ui/compose/components/progress).
+//   the wavy LinearWavyProgress for the download (Material 3 Expressive, https://m3.material.io/components/progress-indicators/overview).
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
@@ -43,6 +42,7 @@ import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.ui.component.BoldButton
+import com.yaz.store.ui.component.LinearWavyProgress
 import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.SegmentedGap
 import com.yaz.store.ui.component.ZoneSurface
@@ -242,15 +242,20 @@ internal fun StateButton(status: AppStatus, job: InstallJob?, actions: CardActio
     }
 }
 
-/** The step in words and, while it downloads, its bar (Material's LinearProgressIndicator). */
+/**
+ * The step in words ("Downloading 12 MB of 39 MB", as Google Play) and its bar: Material 3 Expressive's wavy one (Modules'
+ * LinearWavyProgress, from androidx material3's LinearWavyProgressIndicator,
+ * https://github.com/androidx/androidx/blob/androidx-main/compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/WavyProgressIndicator.kt):
+ * determinate while it downloads, indeterminate for the other active steps.
+ */
 @Composable
 internal fun Progress(job: InstallJob, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(jobText(LocalContext.current, job), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
         if (job.step == JobStep.DOWNLOADING) {
-            LinearProgressIndicator(progress = { job.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
+            LinearWavyProgress(progress = { job.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
         } else if (job.step.active) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
+            LinearWavyProgress(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
         }
     }
 }

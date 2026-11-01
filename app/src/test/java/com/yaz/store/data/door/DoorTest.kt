@@ -81,7 +81,7 @@ class DoorTest {
 
         override fun sums(repo: String, tag: String) = sums
 
-        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) {
+        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit) {
             downloads.incrementAndGet()
             into.writeBytes(bytes)
         }

@@ -104,13 +104,13 @@ class InstallQueueTest {
             return sumsFor(repo)
         }
 
-        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) {
+        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit) {
             val now = concurrent.incrementAndGet()
             synchronized(this) { maxConcurrent = maxOf(maxConcurrent, now) }
             try {
                 val body = bodyFor(repo)
                 into.writeBytes(body.copyOf(body.size / 2))
-                onProgress(0.5f)
+                onProgress((body.size / 2).toLong(), body.size.toLong())
                 started(repo).countDown()
                 gates[repo]?.let { while (!it.await(5, TimeUnit.MILLISECONDS)) beforeRead() }
                 val gate = hold?.takeIf { it.first == repo }?.second
@@ -120,7 +120,7 @@ class InstallQueueTest {
                 }
                 beforeRead()
                 into.writeBytes(body)
-                onProgress(1f)
+                onProgress(body.size.toLong(), body.size.toLong())
             } finally {
                 concurrent.decrementAndGet()
             }

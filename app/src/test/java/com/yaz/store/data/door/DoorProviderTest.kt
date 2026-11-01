@@ -75,7 +75,7 @@ class DoorProviderTest {
     private fun unusedBackend(): com.yaz.store.data.install.InstallBackend = object : com.yaz.store.data.install.InstallBackend {
         override val sdk = 36
         override fun sums(repo: String, tag: String) = error("not used")
-        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit) = error("not used")
+        override fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit) = error("not used")
         override suspend fun inspect(file: File) = error("not used")
         override fun installedSigners(packageName: String) = error("not used")
         override suspend fun install(request: com.yaz.store.core.install.InstallRequest, onState: (com.yaz.store.core.install.InstallState) -> Unit) = error("not used")

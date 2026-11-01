@@ -232,6 +232,22 @@ class HomeContentTest {
         assertEquals("Failed: The file is another version than the release says.", words(JobStep.FAILED, why = "The file is another version than the release says."))
     }
 
+    // Google Play's "12 MB of 39 MB", the sizes from Android's Formatter.formatShortFileSize
+    // (https://developer.android.com/reference/android/text/format/Formatter#formatShortFileSize(android.content.Context,%20long)),
+    // tested as the test above, with Robolectric's context (https://robolectric.org/); an unknown total keeps the percentage.
+    @Test
+    fun `a download of a known size says how much of it is done`() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        fun words(done: Long, total: Long) = jobText(context, InstallJob(calculator.entry, false, 1, JobStep.DOWNLOADING, 0.31f, null, null, done, total))
+        assertEquals("Downloading 12 MB of 39 MB", words(12_000_000, 39_000_000))
+        assertEquals("Downloading 0 B of 39 MB", words(0, 39_000_000))
+        assertEquals("Downloading 39 MB of 39 MB", words(50_000_000, 39_000_000))
+        assertEquals("Downloading 31%", words(12_000_000, 0))
+        val running = InstallJob(calculator.entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.31f, bytesDone = 12_000_000, bytesTotal = 39_000_000)
+        compose.setContent { HomeContent(HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running), details = Fixtures.details), onRetry = {}) }
+        compose.onAllNodesWithTextCount("Downloading 12 MB of 39 MB", 2)
+    }
+
     @Test
     fun `android names its levels as people do`() {
         assertEquals("12", HomeModel.androidName(31))

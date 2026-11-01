@@ -61,7 +61,10 @@ data class InstallJob(
     val progress: Float = 0f,
     val why: String? = null,
     /** Android's confirmation screen while CONFIRM; the screen starts it. */
-    val confirm: Intent? = null
+    val confirm: Intent? = null,
+    /** The bytes read and the size of the APK while DOWNLOADING; [bytesTotal] is 0 when the server does not say. */
+    val bytesDone: Long = 0,
+    val bytesTotal: Long = 0
 )
 
 /** What the queue needs from the phone and the network; the real one is StoreBackend, the tests give their own. */
@@ -73,7 +76,7 @@ interface InstallBackend {
     fun sums(repo: String, tag: String): String
 
     /** Downloads [apkName] of the release into [into]; [beforeRead] runs before each read and may throw to stop. Throws NetError. Called by several entries at once. */
-    fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit)
+    fun download(repo: String, tag: String, apkName: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit)
 
     /** The kit's isolated inspector on [file]; null when it could not read it. Called by several entries at once. */
     suspend fun inspect(file: File): ApkInfo?
@@ -228,7 +231,9 @@ class InstallQueue(
         // Every entry does this at the same time as the others.
         Fetch.checked(
             backend, entry, file,
-            onProgress = { p -> change(serial) { it.copy(progress = p) } },
+            onProgress = { done, total ->
+                change(serial) { it.copy(progress = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f, bytesDone = done, bytesTotal = total) }
+            },
             onChecking = { change(serial) { it.copy(step = JobStep.CHECKING, progress = 1f) } }
         )
         // Checked: it waits for its turn, still shown as CHECKING with the download full. Store's own entry lets every other one end first.

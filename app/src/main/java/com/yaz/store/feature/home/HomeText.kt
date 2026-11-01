@@ -3,9 +3,12 @@ package com.yaz.store.feature.home
 // The words of Home that depend on state, read from strings.xml (Android's string resources and plurals,
 // https://developer.android.com/guide/topics/resources/string-resource): what an entry of the queue is doing, and why the list is
 // incomplete. The time of GitHub's limit is shown in the phone's format, android.text.format.DateFormat
-// (https://developer.android.com/reference/android/text/format/DateFormat#getTimeFormat(android.content.Context)).
+// (https://developer.android.com/reference/android/text/format/DateFormat#getTimeFormat(android.content.Context)). The sizes of a
+// download come from android.text.format.Formatter.formatShortFileSize
+// (https://developer.android.com/reference/android/text/format/Formatter#formatShortFileSize(android.content.Context,%20long)).
 import android.content.Context
 import android.text.format.DateFormat
+import android.text.format.Formatter
 import com.yaz.store.R
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.install.InstallJob
@@ -15,7 +18,17 @@ import java.util.Date
 /** What an entry of the queue is doing, in words. */
 fun jobText(context: Context, job: InstallJob): String = when (job.step) {
     JobStep.QUEUED -> context.getString(R.string.job_waiting)
-    JobStep.DOWNLOADING -> context.getString(R.string.job_downloading, (job.progress * 100).toInt().coerceIn(0, 100))
+    JobStep.DOWNLOADING ->
+        if (job.bytesTotal > 0) {
+            // As Google Play: "12 MB of 39 MB", the sizes in the phone's units.
+            context.getString(
+                R.string.job_downloading_size,
+                Formatter.formatShortFileSize(context, job.bytesDone.coerceIn(0L, job.bytesTotal)),
+                Formatter.formatShortFileSize(context, job.bytesTotal)
+            )
+        } else {
+            context.getString(R.string.job_downloading, (job.progress * 100).toInt().coerceIn(0, 100))
+        }
     JobStep.CHECKING -> context.getString(R.string.job_checking)
     JobStep.INSTALLING -> context.getString(R.string.job_installing)
     JobStep.CONFIRM -> context.getString(R.string.job_confirm)

@@ -259,7 +259,8 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
     // The kit's download, with its 200 MiB cap.
     // [beforeRead] runs before each read of the body: a caller that is cancelled throws from it (kotlinx.coroutines' ensureActive),
     // so a download stops at the next buffer and the connection is closed by the finally below.
-    fun download(url: String, into: File, onProgress: (Float) -> Unit, beforeRead: () -> Unit = {}) {
+    // [onProgress] gets the bytes read and the total (0 when the server does not say), once per percent.
+    fun download(url: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit = {}) {
         val start = parse(url)
         try {
             val conn = open(start, null) ?: throw NetError(NetError.Kind.REFUSED, message = "304 on a download")
@@ -282,7 +283,7 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                             val percent = if (total > 0) (read * 100 / total).toInt() else -1
                             if (percent != shown) {
                                 shown = percent
-                                onProgress(if (total > 0) read.toFloat() / total else 0f)
+                                onProgress(read, total.coerceAtLeast(0L))
                             }
                         }
                     }
