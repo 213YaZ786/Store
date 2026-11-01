@@ -18,6 +18,8 @@ import com.yaz.store.data.door.DoorGuard
 import com.yaz.store.data.door.DoorProvider
 import com.yaz.store.data.door.Staging
 import com.yaz.store.data.catalog.IconStore
+import com.yaz.store.data.catalog.RepoDescriptions
+import com.yaz.store.data.catalog.RepoFiles
 import com.yaz.store.data.catalog.Seeded
 import com.yaz.store.data.catalog.phoneAbis
 import com.yaz.store.data.catalog.phoneLocaleTags
@@ -51,9 +53,13 @@ val appModule = module {
             seeded = if (BuildConfig.DEBUG) ({ Seeded.read(File(app.filesDir, "debug-seed.json"), phoneLocaleTags(), phoneAbis()) }) else ({ emptyList() }),
             // A release with no app.json is read from its APK by ranges, in the isolated SparseInspectorService (data/sparse).
             overlay = if (BuildConfig.DEBUG) debugOverlay(app) else null,
-            probe = SparseProbe(get<ReleaseNet>()::ranges, SparseApk(SparseInspector(app), File(app.cacheDir, "sparse-work")), File(app.cacheDir, "sparse"))
+            probe = SparseProbe(get<ReleaseNet>()::ranges, SparseApk(SparseInspector(app), File(app.cacheDir, "sparse-work")), File(app.cacheDir, "sparse")),
+            // The app's own short description, read from its repo (fastlane layout), newest first.
+            repoWords = get<RepoDescriptions>()
         )
     }
+    // The short descriptions of the repos, one file per repo and locale in the cache, asked once per opening with the ETag (RepoFiles).
+    single { RepoDescriptions(RepoFiles(RepoDescriptions.folder(androidContext().cacheDir), get<ReleaseNet>()::getIfChanged)) }
     // The release icons of apps not installed, one file per tag in the cache.
     single { IconStore(get<ReleaseNet>(), File(androidContext().cacheDir, "icons"), if (BuildConfig.DEBUG) debugOverlay(androidContext()) else null) }
     // The install kit's installer and isolated inspector, and the queue that downloads, checks and installs one entry at a time

@@ -11,7 +11,8 @@ package com.yaz.store.data.catalog
 //   AssetArchitectureMatcher does (AbiChoice).
 // - app.json is read with kotlinx.serialization's Json, ignoring unknown keys
 //   (https://github.com/Kotlin/kotlinx.serialization/blob/master/docs/json.md#ignoring-unknown-keys); its fields are the ones the shared CI
-//   writes (Modules shared/base/root/.github/workflows/build.yml.tpl, "Write app.json and the icon").
+//   wrote until 2026-11-01 (Modules shared/base/root/.github/workflows/build.yml.tpl, "Write app.json and the icon"); a release since then
+//   carries only the APK and SHA256SUMS.txt, and the words and the icon are read from the repo (RepoDescriptions, IconStore).
 // - A package name by Android's own rule: AOSP FrameworkParsingPackageUtils.validateName
 //   (https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/content/pm/parsing/FrameworkParsingPackageUtils.java).
 // - The description by the phone's languages, fastlane's locale folders (en-US, fr-FR) as GrapheneOS' App Store chooses a language
@@ -332,7 +333,9 @@ class Catalog(
     /** Debug builds only (AppModule): changes what the entries show, see [CatalogOverlay]. Nothing in the release build. */
     private val overlay: CatalogOverlay? = null,
     /** Reads a release APK with no app.json by ranges (data/sparse); null lists such a repo by its name. */
-    private val probe: ApkProbe? = null
+    private val probe: ApkProbe? = null,
+    /** An app's own short description from its repo (RepoDescriptions); null reads none. */
+    private val repoWords: RepoWords? = null
 ) {
 
     private sealed interface Outcome {
@@ -430,9 +433,12 @@ class Catalog(
         return details
     }
 
-    // One repo: the tag of its latest release from the first hop of latest/download/app.json, then app.json of that tag, the APK for this phone
-    // among the ones it lists, and icon.png when the release has one. A 404 on app.json is a release made before app.json existed: its APKs are
-    // named by SHA256SUMS.txt and read by ranges (fromApk). An app.json that does not pass the rules is no app of ours.
+    // One repo: the tag of its latest release from the first hop of latest/download/SHA256SUMS.txt, then app.json of that tag when the release
+    // has one (the older releases), the APK for this phone among the ones it lists, and icon.png when the release has one. A 404 on app.json is a
+    // release without it (every release since the CI keeps only the APK and the sums): its APKs are named by SHA256SUMS.txt and read by ranges
+    // (fromApk). An app.json that does not pass the rules is no app of ours.
+    // The words: the repo's own short description first, the newest (RepoDescriptions, fastlane layout), then app.json's of an old release, then
+    // the repo's "about" on GitHub (wordsOf).
     private suspend fun entryOf(repo: String, about: String, tags: List<String>, phoneAbis: List<String>): Outcome {
         try {
             val tag = source.latestTag(repo)
@@ -440,7 +446,7 @@ class Catalog(
                 source.getJson(ReleaseNet.downloadUrl(repo, tag, "app.json"))
             } catch (e: NetError) {
                 if (e.kind != NetError.Kind.NOT_FOUND) throw e
-                return fromApk(repo, tag, about, phoneAbis)
+                return fromApk(repo, tag, about, tags, phoneAbis)
             }
             val app = CatalogRules.parseAppJson(text) ?: return Outcome.Skipped
             val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png")
@@ -450,8 +456,7 @@ class Catalog(
                     tag = tag,
                     packageName = app.packageName,
                     label = app.label,
-                    // app.json's description wins; with none for the phone's languages, the repo's own on GitHub; else none.
-                    description = CatalogRules.pickDescription(app.descriptions, tags).ifEmpty { about },
+                    description = wordsOf(repo, tags, CatalogRules.pickDescription(app.descriptions, tags), about),
                     versionCode = app.versionCode,
                     versionName = app.versionName,
                     minSdk = app.minSdk,
@@ -469,8 +474,9 @@ class Catalog(
     // (komi-store's asset choice, https://github.com/komi-store/komi-store, AssetArchitectureMatcher.kt, through AbiChoice), and what that APK
     // says read by ranges (https://www.rfc-editor.org/rfc/rfc9110#section-14, data/sparse). An APK that cannot be read is the repo by its name with
     // Install, as komi-store lists a repo by its name (https://github.com/komi-store/komi-store); the full install path checks the file.
-    // Its description is the repo's own on GitHub, already in the repo list ([about], "" when GitHub has none: no line then).
-    private suspend fun fromApk(repo: String, tag: String, about: String, phoneAbis: List<String>): Outcome {
+    // Its description is the repo's own short description (wordsOf), else the repo's "about" on GitHub, already in the repo list ([about], "" when
+    // GitHub has none: no line then).
+    private suspend fun fromApk(repo: String, tag: String, about: String, tags: List<String>, phoneAbis: List<String>): Outcome {
         val sums = try {
             source.getJson(ReleaseNet.downloadUrl(repo, tag, "SHA256SUMS.txt"))
         } catch (e: NetError) {
@@ -479,24 +485,31 @@ class Catalog(
         }
         val names = CatalogRules.apkNames(sums)
         if (names.isEmpty()) return Outcome.Skipped
+        val words = wordsOf(repo, tags, "", about)
         val chosen = AbiChoice.choose(names, phoneAbis)
         val info = chosen?.let { probe?.probe(repo, tag, it) }
         val icon = ReleaseNet.downloadUrl(repo, tag, "icon.png").takeIf { source.exists(it) }
         val entry = if (info != null) {
             StoreEntry(
-                repo = repo, tag = tag, packageName = info.packageName, label = info.label ?: repo, description = about,
+                repo = repo, tag = tag, packageName = info.packageName, label = info.label ?: repo, description = words,
                 versionCode = info.versionCode, versionName = info.versionName.ifEmpty { tag.removePrefix("v") }, minSdk = info.minSdk,
                 apkName = chosen, iconUrl = icon, sparse = true
             )
         } else {
             StoreEntry(
-                repo = repo, tag = tag, packageName = CatalogRules.placeholderPackage(repo), label = repo, description = about,
+                repo = repo, tag = tag, packageName = CatalogRules.placeholderPackage(repo), label = repo, description = words,
                 versionCode = 0, versionName = tag.removePrefix("v"), minSdk = 1,
                 apkName = chosen, iconUrl = icon, unread = true, sparse = true
             )
         }
         return Outcome.Found(entry)
     }
+
+    // Source: the order the stores read an app's words in: the source repo's fastlane text is the newest (F-Droid reads it from the repo and never
+    // from a release, https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots), then what an older release's app.json carried
+    // ([fromRelease], CatalogRules.pickDescription), then the repo's "about" ([about], GitHub's list repositories for a user). Blank ones are skipped.
+    private fun wordsOf(repo: String, tags: List<String>, fromRelease: String, about: String): String =
+        (repoWords?.description(repo, tags)?.takeIf { it.isNotBlank() } ?: fromRelease).ifEmpty { about }
 
     private fun errorOf(e: NetError): CatalogError = when (e.kind) {
         NetError.Kind.OFFLINE, NetError.Kind.METERED -> CatalogError.Offline

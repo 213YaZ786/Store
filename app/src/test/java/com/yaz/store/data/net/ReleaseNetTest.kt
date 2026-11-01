@@ -14,7 +14,7 @@ class ReleaseNetTest {
 
     private val list = "https://api.github.com/users/213YaZ786/repos?per_page=100&type=owner"
     private fun notes(repo: String, tag: String = "v1.0.0") = "https://api.github.com/repos/213YaZ786/$repo/releases/tags/$tag"
-    private fun latest(repo: String) = "https://github.com/213YaZ786/$repo/releases/latest/download/app.json"
+    private fun latest(repo: String) = "https://github.com/213YaZ786/$repo/releases/latest/download/SHA256SUMS.txt"
     private fun file(repo: String, tag: String = "v1.0.0", name: String = "a.apk") =
         "https://github.com/213YaZ786/$repo/releases/download/$tag/$name"
 
@@ -32,7 +32,7 @@ class ReleaseNetTest {
         assertTrue(ReleaseNet.startAllowed("https://api.github.com:443/repos/213YaZ786/Calculator/releases/tags/v1"))
         assertEquals(list, ReleaseNet.repoListUrl())
         assertEquals(notes("Mushaf", "v2"), ReleaseNet.tagsUrl("Mushaf", "v2"))
-        assertEquals(latest("Mushaf"), ReleaseNet.latestAppJsonUrl("Mushaf"))
+        assertEquals(latest("Mushaf"), ReleaseNet.latestSumsUrl("Mushaf"))
         assertEquals(file("Mushaf", "v2", "x.apk"), ReleaseNet.downloadUrl("Mushaf", "v2", "x.apk"))
     }
 
@@ -47,52 +47,53 @@ class ReleaseNetTest {
     }
 
     @Test
-    fun `only app json is read through latest download`() {
-        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/SHA256SUMS.txt"))
+    fun `only SHA256SUMS txt is read through latest download`() {
+        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/app.json"))
         assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/Calculator.apk"))
         assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/"))
-        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/app.json/x"))
-        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/App.json"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/SHA256SUMS.txt/x"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest/download/sha256sums.txt"))
         assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/Calculator/releases/latest"))
-        assertFalse(ReleaseNet.startAllowed("https://github.com/someone/Calculator/releases/latest/download/app.json"))
-        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/../Calculator/releases/latest/download/app.json"))
-        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/%2e%2e/releases/latest/download/app.json"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com/someone/Calculator/releases/latest/download/SHA256SUMS.txt"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/../Calculator/releases/latest/download/SHA256SUMS.txt"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com/213YaZ786/%2e%2e/releases/latest/download/SHA256SUMS.txt"))
         assertFalse(ReleaseNet.startAllowed("${latest("Calculator")}?x=1"))
         assertFalse(ReleaseNet.startAllowed("${latest("Calculator")}#x"))
         assertFalse(ReleaseNet.startAllowed(latest("Calculator").replace("https", "http")))
-        assertFalse(ReleaseNet.startAllowed("https://github.com.evil.example/213YaZ786/Calculator/releases/latest/download/app.json"))
-        assertFalse(ReleaseNet.startAllowed("https://api.github.com/213YaZ786/Calculator/releases/latest/download/app.json"))
+        assertFalse(ReleaseNet.startAllowed("https://github.com.evil.example/213YaZ786/Calculator/releases/latest/download/SHA256SUMS.txt"))
+        assertFalse(ReleaseNet.startAllowed("https://api.github.com/213YaZ786/Calculator/releases/latest/download/SHA256SUMS.txt"))
     }
 
     @Test
-    fun `the first hop of latest download must name this repo's own app json`() {
-        assertEquals("v0.3.6", ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v0.3.6", "app.json")))
-        assertEquals("v1.2.3+4", ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1.2.3+4", "app.json")))
-        assertEquals("a".repeat(100), ReleaseNet.tagOfLocation("Calculator", file("Calculator", "a".repeat(100), "app.json")))
+    fun `the first hop of latest download must name this repo's own SHA256SUMS txt`() {
+        val sums = "SHA256SUMS.txt"
+        assertEquals("v0.3.6", ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v0.3.6", sums)))
+        assertEquals("v1.2.3+4", ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1.2.3+4", sums)))
+        assertEquals("a".repeat(100), ReleaseNet.tagOfLocation("Calculator", file("Calculator", "a".repeat(100), sums)))
         // another repo, another owner, another host, another file, a lookalike
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("SMS", "v1", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/someone/Calculator/releases/download/v1/app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/213yaz786/Calculator/releases/download/v1/app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://evil.example/213YaZ786/Calculator/releases/download/v1/app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com.evil.example/213YaZ786/Calculator/releases/download/v1/app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com@evil.example/213YaZ786/Calculator/releases/download/v1/app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", "app.json").replace("https", "http")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", "SHA256SUMS.txt")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", "app.json") + "?x=1"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", "app.json") + "/"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("SMS", "v1", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/someone/Calculator/releases/download/v1/$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/213yaz786/Calculator/releases/download/v1/$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://evil.example/213YaZ786/Calculator/releases/download/v1/$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com.evil.example/213YaZ786/Calculator/releases/download/v1/$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com@evil.example/213YaZ786/Calculator/releases/download/v1/$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", sums).replace("https", "http")))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", "app.json")))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", sums) + "?x=1"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1", sums) + "/"))
         // a tag with a slash, an encoded slash, a dots segment, nothing, too long
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1/x", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1%2fx", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1%2Fx", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "%2e%2e", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "..", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", ".", "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/213YaZ786/Calculator/releases/download//app.json"))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "a".repeat(101), "app.json")))
-        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v 1", "app.json")))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1/x", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1%2fx", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v1%2Fx", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "%2e%2e", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "..", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", ".", sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", "https://github.com/213YaZ786/Calculator/releases/download//$sums"))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "a".repeat(101), sums)))
+        assertNull(ReleaseNet.tagOfLocation("Calculator", file("Calculator", "v 1", sums)))
         assertNull(ReleaseNet.tagOfLocation("Calculator", ""))
         assertNull(ReleaseNet.tagOfLocation("Calculator", null))
-        assertNull(ReleaseNet.tagOfLocation("..", "https://github.com/213YaZ786/../releases/download/v1/app.json"))
+        assertNull(ReleaseNet.tagOfLocation("..", "https://github.com/213YaZ786/../releases/download/v1/$sums"))
     }
 
     @Test
@@ -293,6 +294,72 @@ class ReleaseNetTest {
         }
         // other hosts still follow the old rule
         assertEquals("objects.githubusercontent.com", ReleaseNet.hop(start, URL("https://objects.githubusercontent.com/x")).host)
+    }
+
+    private fun words(repo: String = "Calculator", owner: String = "213YaZ786", ref: String = "HEAD", path: String = "fastlane/metadata/android/fr-FR/short_description.txt") =
+        "https://github.com/$owner/$repo/raw/$ref/$path"
+
+    // Source: UpdatesTest of the update kit (https://github.com/213YaZ786/Calculator, app/src/test/java/com/yaz/calculator/core/update/UpdatesTest.kt),
+    // the shape of the repo icon test above, for the short description of one locale (https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots).
+    @Test
+    fun `the short description address is allowed for a fastlane locale and nothing else`() {
+        for (locale in listOf("en-US", "fr-FR", "pt-BR", "es-419", "de", "fil", "zh-CN")) {
+            val url = words(path = "fastlane/metadata/android/$locale/short_description.txt")
+            assertEquals(url, ReleaseNet.repoDescriptionUrl("Calculator", locale))
+            assertTrue(locale, ReleaseNet.startAllowed(url))
+        }
+        assertTrue(ReleaseNet.startAllowed(words("Yid")))
+        // a bad locale: refused by the builder and by the allow-list
+        for (locale in listOf("", "EN-US", "en-us", "en_US", "e", "english", "en-USA", "en-U", "en-41", "en-4192", "fr-FR/..", "..", "../x", "en-US/images", "fr FR", "fr-FR\n", "é", "%2e%2e")) {
+            assertThrows(locale, IllegalArgumentException::class.java) { ReleaseNet.repoDescriptionUrl("Calculator", locale) }
+            assertFalse(locale, ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/$locale/short_description.txt")))
+        }
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/fr-FR/../../../../README.md")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/fr-FR/full_description.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/fr-FR/title.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/fr-FR/short_description.txt/x")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/fr-FR/Short_description.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/ios/fr-FR/short_description.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "fastlane/metadata/android/short_description.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(path = "metadata/android/fr-FR/short_description.txt")))
+        assertFalse(ReleaseNet.startAllowed(words(owner = "someone")))
+        assertFalse(ReleaseNet.startAllowed(words(owner = "213yaz786")))
+        assertFalse(ReleaseNet.startAllowed(words(repo = "..")))
+        assertFalse(ReleaseNet.startAllowed(words(repo = "a%2fb")))
+        assertFalse(ReleaseNet.startAllowed(words(ref = "main")))
+        assertFalse(ReleaseNet.startAllowed(words(ref = "b93fcc0740e6767393e3544382ea38d126ac76de")))
+        assertFalse(ReleaseNet.startAllowed(words() + "?x=1"))
+        assertFalse(ReleaseNet.startAllowed(words() + "#x"))
+        assertFalse(ReleaseNet.startAllowed(words().replace("https", "http")))
+        assertFalse(ReleaseNet.startAllowed(words().replace("github.com", "github.com.evil.example")))
+        assertFalse(ReleaseNet.startAllowed(words().replace("github.com", "raw.githubusercontent.com")))
+    }
+
+    @Test
+    fun `the raw host is reached from a short description only for the same owner, repo and file`() {
+        val path = "fastlane/metadata/android/fr-FR/short_description.txt"
+        val sha = "b93fcc0740e6767393e3544382ea38d126ac76de"
+        val start = URL(words("Calculator"))
+        assertEquals("raw.githubusercontent.com", ReleaseNet.hop(start, URL("https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path")).host)
+        assertEquals("raw.githubusercontent.com", ReleaseNet.hop(start, URL("https://raw.githubusercontent.com/213YaZ786/Calculator/refs/heads/main/$path")).host)
+        for (bad in listOf(
+            "https://raw.githubusercontent.com/213YaZ786/SMS/$sha/$path",
+            "https://raw.githubusercontent.com/someone/Calculator/$sha/$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/fastlane/metadata/android/en-US/short_description.txt",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/fastlane/metadata/android/fr-FR/full_description.txt",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/README.md",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/../SMS/$sha/$path",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path?x=1",
+            "https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path#x",
+            "http://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path"
+        )) {
+            val error = assertThrows(bad, NetError::class.java) { ReleaseNet.hop(start, URL(bad)) }
+            assertEquals(NetError.Kind.REFUSED, error.kind)
+        }
+        // the icon's start does not let the description's file through, nor the other way
+        val icon = URL(icon("Calculator"))
+        val error = assertThrows(NetError::class.java) { ReleaseNet.hop(icon, URL("https://raw.githubusercontent.com/213YaZ786/Calculator/$sha/$path")) }
+        assertEquals(NetError.Kind.REFUSED, error.kind)
     }
 
     @Test

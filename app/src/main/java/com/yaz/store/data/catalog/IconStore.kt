@@ -16,6 +16,9 @@ class IconStore(
     private val overlay: CatalogOverlay? = null
 ) {
 
+    // The repo's own files, read with the conditional request (RepoFiles, ported out of this class's former `conditional`).
+    private val files = RepoFiles(dir, net::getIfChanged)
+
     // Repos asked for their icon since the process started: one conditional request per repo and opening.
     private val asked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val askedLayers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -89,40 +92,11 @@ class IconStore(
     private fun repoLayers(repo: String): ByteArray? =
         conditional(repo, ApkInfoCodec.sha256Hex("layers:$repo".toByteArray()), "json", ReleaseNet.repoLayersUrl(repo), IconLayers.MAX_JSON.toLong(), askedLayers)
 
-    // Source: repoIcon's former body (this app's data/catalog/IconStore.kt), the GitHub conditional request above made one function for both files:
-    // [name] the stored file's name, [extension] its kind, [seen] the repos asked since the start.
-    @Synchronized
-    private fun conditional(repo: String, name: String, extension: String, url: String, max: Long, seen: MutableSet<String>): ByteArray? {
-        val file = File(dir, "$name.$extension")
-        val tag = File(dir, "$name.etag")
-        val stored = if (file.isFile && file.length() in 1..max) runCatching { file.readBytes() }.getOrNull() else null
-        if (!seen.add(repo)) return stored
-        val sent = if (stored != null) runCatching { tag.readText() }.getOrNull() else null
-        val fresh = try {
-            net.getIfChanged(url, max, sent) ?: return stored
-        } catch (e: NetError) {
-            when (e.kind) {
-                NetError.Kind.NOT_FOUND -> {
-                    file.delete()
-                    tag.delete()
-                }
-                NetError.Kind.OFFLINE, NetError.Kind.RATE_LIMITED, NetError.Kind.METERED -> seen.remove(repo)
-                NetError.Kind.REFUSED -> Unit
-            }
-            return if (e.kind == NetError.Kind.NOT_FOUND) null else stored
-        }
-        runCatching {
-            dir.mkdirs()
-            val temporary = File(dir, file.name + ".part")
-            temporary.writeBytes(fresh.bytes)
-            if (temporary.renameTo(file)) {
-                if (fresh.etag != null) tag.writeText(fresh.etag) else tag.delete()
-            } else {
-                temporary.delete()
-            }
-        }
-        return fresh.bytes
-    }
+    // Source: repoIcon's former body (this app's data/catalog/IconStore.kt), the GitHub conditional request above made one function for both files,
+    // now RepoFiles.conditional (this app's data/catalog/RepoFiles.kt, shared with the descriptions): [name] the stored file's name,
+    // [extension] its kind, [seen] the repos asked since the start.
+    private fun conditional(repo: String, name: String, extension: String, url: String, max: Long, seen: MutableSet<String>): ByteArray? =
+        files.conditional(repo, name, extension, url, max, seen)
 
     // The release's icon.png, kept on disk per repo and tag (a tag's files do not change).
     private fun releaseIcon(entry: StoreEntry): ByteArray? {

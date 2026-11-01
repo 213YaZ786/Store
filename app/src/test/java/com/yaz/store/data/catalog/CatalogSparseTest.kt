@@ -116,6 +116,51 @@ class CatalogSparseTest {
         assertEquals("Installe et met à jour les apps 213YaZ786 depuis leurs releases", entries.getValue("Calculator").description)
     }
 
+    // The order of an app's words, in both paths (a release with app.json, a release without): the repo's own short description (fastlane), then
+    // app.json's, then GitHub's "about". Same protocol as the test above; the repo's words are a canned RepoWords.
+    @Test
+    fun `the repo's own words come first, then app json's, then GitHub's about`() {
+        // Source: the shape of GitHub's list repositories for a user, as the test above writes it (https://docs.github.com/en/rest/repos/repos#list-repositories-for-a-user).
+        fun repo(name: String, about: String) = """{"name":"$name","owner":{"login":"213YaZ786"},"description":"$about"}"""
+        val fake = Fake(
+            mapOf(
+                ReleaseNet.repoListUrl() to "[${repo("Dialer", "GitHub about")},${repo("Bare", "GitHub about")},${repo("Calculator", "GitHub about")},${repo("Frontr", "GitHub about")}]",
+                // no app.json: Dialer has repo words, Bare has none
+                url("Dialer", "SHA256SUMS.txt") to sums("Dialer-1.apk"),
+                url("Bare", "SHA256SUMS.txt") to sums("Bare-1.apk"),
+                // app.json: Calculator has repo words, Frontr has none
+                url("Calculator", "app.json") to appJson,
+                url("Frontr", "app.json") to appJson
+            ),
+            mapOf("Dialer" to "v1.0.0", "Bare" to "v1.0.0", "Calculator" to "v1.0.0", "Frontr" to "v1.0.0")
+        )
+        val seen = mutableListOf<Pair<String, List<String>>>()
+        val words = RepoWords { name, tags ->
+            synchronized(seen) { seen += name to tags }
+            when (name) {
+                "Dialer" -> "Calls and history"
+                "Calculator" -> "Calculator, converter, sheets"
+                else -> null
+            }
+        }
+        val entries = runBlocking {
+            Catalog(fake, null, { listOf("fr-FR") }, { phone }, probe = Probed(), repoWords = words).load()
+        }.entries.associateBy { it.repo }
+        assertEquals("Calls and history", entries.getValue("Dialer").description)
+        assertEquals("GitHub about", entries.getValue("Bare").description)
+        assertEquals("Calculator, converter, sheets", entries.getValue("Calculator").description)
+        assertEquals("Installe et met à jour les apps 213YaZ786 depuis leurs releases", entries.getValue("Frontr").description)
+        // the phone's languages go to the repo's words as they are
+        assertTrue(seen.all { it.second == listOf("fr-FR") })
+        assertEquals(setOf("Dialer", "Bare", "Calculator", "Frontr"), seen.map { it.first }.toSet())
+        // a blank text from the repo counts as none
+        val blank = runBlocking {
+            Catalog(fake, null, { listOf("fr-FR") }, { phone }, probe = Probed(), repoWords = RepoWords { _, _ -> "  " }).load()
+        }.entries.associateBy { it.repo }
+        assertEquals("GitHub about", blank.getValue("Dialer").description)
+        assertEquals("Installe et met à jour les apps 213YaZ786 depuis leurs releases", blank.getValue("Calculator").description)
+    }
+
     @Test
     fun `the apk names come from the sums with or without the dot slash, never the debug ones`() {
         val text = listOf(

@@ -17,8 +17,8 @@ package com.yaz.store.data.net
 // The repo's own icon (fastlane/metadata/android/en-US/images/icon.png, the layout F-Droid and IzzyOnDroid read from the source tree,
 // https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots) is read through GitHub's raw file link
 // github.com/<owner>/<repo>/raw/<ref>/<path>, a 302 to raw.githubusercontent.com
-// (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files): the one shape allowed,
-// and raw.githubusercontent.com only as the hop of that shape, for the same owner and repo.
+// (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files): the shapes allowed (icon, layers,
+// short_description.txt of one locale), and raw.githubusercontent.com only as the hop of those shapes, for the same owner and repo.
 import com.yaz.store.core.apk.ApkInfoCodec
 import com.yaz.store.core.common.writeTextAtomically
 import java.io.ByteArrayOutputStream
@@ -43,7 +43,7 @@ interface ReleaseSource {
     /** The last text kept for [url] (the repo list), or null. */
     fun cached(url: String): String?
 
-    /** The tag of the latest release of [repo], from the first hop of releases/latest/download/app.json. */
+    /** The tag of the latest release of [repo], from the first hop of releases/latest/download/SHA256SUMS.txt. */
     fun latestTag(repo: String): String
 
     /** Whether the release file at [url] exists, from the first answer of github.com alone (302 or 404). */
@@ -113,11 +113,12 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         if (body.isFile && body.length() <= MAX_JSON) runCatching { body.readText() }.getOrNull() else null
 
     // The first hop of "link to the latest release asset" (docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases):
-    // a 302 whose Location is exactly this repo's releases/download/<tag>/app.json. The tag is kept; every other file is then read
+    // a 302 whose Location is exactly this repo's releases/download/<tag>/SHA256SUMS.txt (every release of ours carries that file, old
+    // and new; app.json is no longer asked for, a release holds only the APK and the sums). The tag is kept; every other file is then read
     // at releases/download/<tag>/<name>, so they all come from one release. Nothing after the first hop is followed here.
     override fun latestTag(repo: String): String {
         if (!validRepo(repo)) throw NetError(NetError.Kind.REFUSED, message = "bad repo")
-        val start = parse(latestAppJsonUrl(repo))
+        val start = parse(latestSumsUrl(repo))
         try {
             val conn = request(start, "HEAD", null)
             try {
@@ -389,6 +390,9 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
             return total
         }
 
+        /** The sums file every release of ours carries, the one the latest tag is read from. */
+        const val SUMS_FILE = "SHA256SUMS.txt"
+
         private const val RAW_HOST = "raw.githubusercontent.com"
         private const val REPO_ICON_PATH = "fastlane/metadata/android/en-US/images/icon.png"
         // The ref raw.githubusercontent.com names after a "HEAD" link: a commit or "refs/heads/<branch>".
@@ -417,15 +421,36 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
             return "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$LAYERS_DIR$png"
         }
 
+        private const val DESCRIPTION_DIR = "fastlane/metadata/android/"
+        private const val DESCRIPTION_FILE = "short_description.txt"
+        // A fastlane locale directory as supply and F-Droid name them (https://docs.fastlane.tools/actions/supply/ and
+        // https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots): language of 2 or 3 lower-case letters, then
+        // optionally '-' and a region of 2 upper-case letters or 3 digits (en-US, fr-FR, pt-BR, es-419).
+        private val LOCALE = Regex("[a-z]{2,3}(-([A-Z]{2}|[0-9]{3}))?")
+
+        /** Whether [name] is a fastlane locale directory name: en-US, fr-FR, pt-BR, es-419 or a bare language such as de. */
+        fun validLocale(name: String): Boolean = LOCALE.matches(name)
+
+        // Source: repoIconUrl above (GitHub's raw link, https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files,
+        // with the F-Droid layout path, which reads the short description from fastlane/metadata/android/<locale>/short_description.txt:
+        // https://f-droid.org/docs/All_About_Descriptions_Graphics_and_Screenshots). The address of the short description of [locale]
+        // (validLocale, else IllegalArgumentException) in the source tree of [repo], on its default branch.
+        fun repoDescriptionUrl(repo: String, locale: String): String {
+            require(validLocale(locale)) { "bad locale" }
+            return "https://$PAGES_HOST/$OWNER/$repo/raw/HEAD/$DESCRIPTION_DIR$locale/$DESCRIPTION_FILE"
+        }
+
         // Source: the same allow-list shape as releaseFile and latestApp above (the update kit's fromRepo), after GitHub's raw link
         // (https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files).
-        // The repo and the file path of an address of exactly three shapes: the icon, the list of layers, one layer picture.
+        // The repo and the file path of an address of exactly four shapes: the icon, the list of layers, one layer picture, one short description.
+        // "", owner, repo, raw, HEAD, fastlane, metadata, android, <locale>, short_description.txt
         // "", owner, repo, raw, HEAD, fastlane, metadata, android, en-US, images, icon.png
         // "", owner, repo, raw, HEAD, fastlane, metadata, android, en-US, images, layers, icon-layers.json or <name>.png
         private fun repoFile(parts: List<String>): Pair<String, String>? {
-            if (parts.size < 11 || parts[0].isNotEmpty() || parts[1] != OWNER || parts[3] != "raw" || parts[4] != "HEAD") return null
+            if (parts.size < 10 || parts[0].isNotEmpty() || parts[1] != OWNER || parts[3] != "raw" || parts[4] != "HEAD") return null
             val path = parts.subList(5, parts.size).joinToString("/")
             val allowed = when (parts.size) {
+                10 -> path.startsWith(DESCRIPTION_DIR) && validLocale(parts[8]) && parts[9] == DESCRIPTION_FILE
                 11 -> path == REPO_ICON_PATH
                 12 -> path.startsWith(LAYERS_DIR) && (parts[11] == LAYERS_JSON || validLayerPng(parts[11]))
                 else -> false
@@ -491,30 +516,31 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         /** The address of the date and file sizes of the release tagged [tag] of [repo]. */
         fun tagsUrl(repo: String, tag: String): String = "https://$API_HOST/repos/$OWNER/$repo/releases/tags/$tag"
 
-        /** The address that redirects to the app.json of the latest release of [repo]. */
-        fun latestAppJsonUrl(repo: String): String = "https://$PAGES_HOST/$OWNER/$repo/releases/latest/download/app.json"
+        // Source: "link to the latest release asset" (https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases).
+        /** The address that redirects to the SHA256SUMS.txt of the latest release of [repo]. */
+        fun latestSumsUrl(repo: String): String = "https://$PAGES_HOST/$OWNER/$repo/releases/latest/download/$SUMS_FILE"
 
         /** The address of the file [name] of the release tagged [tag] of [repo]. */
         fun downloadUrl(repo: String, tag: String, name: String): String =
             "https://$PAGES_HOST/$OWNER/$repo/releases/download/$tag/$name"
 
         /**
-         * The tag in [location], the redirect of releases/latest/download/app.json of [repo]: exactly
-         * https://github.com/<owner>/<same repo>/releases/download/<tag>/app.json, else null.
+         * The tag in [location], the redirect of releases/latest/download/SHA256SUMS.txt of [repo]: exactly
+         * https://github.com/<owner>/<same repo>/releases/download/<tag>/SHA256SUMS.txt, else null.
          */
         fun tagOfLocation(repo: String, location: String?): String? {
             if (location == null || !validRepo(repo)) return null
             val prefix = "https://$PAGES_HOST/$OWNER/$repo/releases/download/"
-            if (!location.startsWith(prefix) || !location.endsWith("/app.json")) return null
-            val tag = location.removePrefix(prefix).removeSuffix("/app.json")
+            if (!location.startsWith(prefix) || !location.endsWith("/$SUMS_FILE")) return null
+            val tag = location.removePrefix(prefix).removeSuffix("/$SUMS_FILE")
             return tag.takeIf(::validTag)
         }
 
         /**
-         * Whether [url] may be asked for at all: HTTPS, no user, no fragment, the default port, and one of four shapes
-         * only (the repo list of our account, the date and sizes of one release of one of its repos, the latest app.json of one of its repos,
-         * a file of one of its releases). Percent signs, dots segments and other hosts never match. After the kit's fromRepo
-         * (Updates.fromRepo).
+         * Whether [url] may be asked for at all: HTTPS, no user, no fragment, the default port, and a few shapes
+         * only (the repo list of our account, the date and sizes of one release of one of its repos, the latest SHA256SUMS.txt of one of its repos,
+         * a file of one of its releases, a file of the repo's fastlane tree: icon, layers, short description). Percent signs, dots segments and
+         * other hosts never match. After the kit's fromRepo (Updates.fromRepo).
          */
         fun startAllowed(url: String): Boolean {
             val u = try { URL(url) } catch (e: MalformedURLException) { return false }
@@ -540,10 +566,10 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
             return parts[2]
         }
 
-        // "", owner, repo, releases, latest, download, app.json
+        // "", owner, repo, releases, latest, download, SHA256SUMS.txt
         private fun latestApp(parts: List<String>): String? {
             if (parts.size != 7 || parts[0].isNotEmpty() || parts[1] != OWNER) return null
-            if (parts[3] != "releases" || parts[4] != "latest" || parts[5] != "download" || parts[6] != "app.json") return null
+            if (parts[3] != "releases" || parts[4] != "latest" || parts[5] != "download" || parts[6] != SUMS_FILE) return null
             return parts[2].takeIf(::validRepo)
         }
 
