@@ -346,7 +346,9 @@ private fun OrphanRow(job: InstallJob, onCancel: (String) -> Unit, modifier: Mod
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(job.entry.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(job.entry.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Progress(job)
+            // Progress is the bar line only (the step is its TalkBack description), so the step is written here as before.
+            Text(jobText(LocalContext.current, job), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            if (job.step.active) Progress(job)
             if (job.step.active) QuietButton(onClick = { onCancel(job.entry.packageName) }, modifier = Modifier.fillMaxWidth(), shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
         }
     }

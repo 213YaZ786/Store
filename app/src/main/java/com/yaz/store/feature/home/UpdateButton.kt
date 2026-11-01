@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,10 +73,17 @@ import kotlin.math.hypot
  * the glass, glint and wave drawn on that shape.
  */
 @Composable
-internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier = Modifier, shape: Shape = ShapeDefaults.Large) {
+internal fun UpdateButton(
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    shape: Shape = ShapeDefaults.Large,
+    // The label's style when the button is not at Material's default size (Home's rows use the Medium size, titleMedium).
+    labelStyle: TextStyle? = null
+) {
     val glass = LocalGlass.current
     if (glass == null) {
-        BoldButton(onClick = onClick, modifier = modifier, filled = true, shape = shape) { UpdateLabel(label, Color.Unspecified) }
+        BoldButton(onClick = onClick, modifier = modifier, filled = true, shape = shape) { UpdateLabel(label, Color.Unspecified, labelStyle) }
         return
     }
     // The theme's error colour; by night its deep container, since the night's error is a pale pink that does not read as red glass.
@@ -113,7 +121,7 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
                         clipPath(path) { drawGlint(sparkle, p) }
                     }
                 }
-        ) { UpdateLabel(label, onRed) }
+        ) { UpdateLabel(label, onRed, labelStyle) }
     }
 }
 
@@ -123,15 +131,17 @@ internal fun UpdateButton(onClick: () -> Unit, label: String, modifier: Modifier
  * Compose's TextAutoSize.StepBased (https://developer.android.com/develop/ui/compose/text/autosize), as SMS's PersonActionTile.
  */
 @Composable
-private fun UpdateLabel(label: String, color: Color) {
+private fun UpdateLabel(label: String, color: Color, style: TextStyle?) {
     val group = LocalGroupFontSize.current
     if (group.isSpecified) {
         Text(label, color = color, textAlign = TextAlign.Center, fontSize = group)
         return
     }
-    val size = MaterialTheme.typography.labelLarge.fontSize
+    val textStyle = style ?: LocalTextStyle.current
+    val size = style?.fontSize ?: MaterialTheme.typography.labelLarge.fontSize
     Text(
         label,
+        style = textStyle,
         color = color,
         textAlign = TextAlign.Center,
         maxLines = 2,

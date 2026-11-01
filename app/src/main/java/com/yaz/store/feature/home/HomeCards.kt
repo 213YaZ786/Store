@@ -10,23 +10,45 @@ package com.yaz.store.feature.home
 //   the icon, the name, a short description and an install button, whose body opens the details page;
 // - Material 3's list anatomy (https://m3.material.io/components/lists/specs: leading image, headline, supporting text, trailing element)
 //   as segmented tiles (https://m3.material.io/components/lists/guidelines, "use gaps for contained lists"; ui/component/SegmentedShapes.kt);
-//   the wavy LinearWavyProgress for the download (Material 3 Expressive, https://m3.material.io/components/progress-indicators/overview).
+//   the wavy LinearWavyProgress for the download (Material 3 Expressive, https://m3.material.io/components/progress-indicators/overview);
+// - the update card while a job runs: Google Play's download row (a ring around the shrunken icon, Cancel in the Install button's place) and
+//   GrapheneOS' App Store details screen (progress and Cancel); the buttons are Material 3 Expressive's Medium size (androidx
+//   compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/ButtonMediumTokens.kt: ContainerHeight 56 dp,
+//   LeadingSpace and TrailingSpace 24 dp, which is ButtonDefaults.ContentPadding's horizontal padding), their label titleMedium; the ring is Modules'
+//   CircularWavyProgress and the bar its LinearWavyProgress with the thick strokes of androidx's LinearThickWavyProgressIndicatorSample
+//   (compose/material3/material3/samples/src/main/java/androidx/compose/material3/samples/ProgressIndicatorSamples.kt: 8 dp strokes, Round caps,
+//   Modifier.height(14.dp)).
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import java.text.NumberFormat
 import android.text.format.Formatter
 import androidx.compose.ui.platform.LocalContext
 import com.yaz.store.data.catalog.AppState
@@ -42,8 +64,8 @@ import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.ui.component.BoldButton
+import com.yaz.store.ui.component.CircularWavyProgress
 import com.yaz.store.ui.component.LinearWavyProgress
-import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.SegmentedGap
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.entrancePop
@@ -140,6 +162,8 @@ internal fun AppRow(
 ) {
     val active = job != null && job.step.active
     val haptics = rememberHaptics()
+    // Google Play's download row: the icon shrinks inside its slot and a ring runs around it.
+    val iconSize by animateDpAsState(if (active) 44.dp else 56.dp, label = "iconSize")
     ZoneSurface(
         shape = shape,
         onClick = {
@@ -153,7 +177,21 @@ internal fun AppRow(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppIcon(status, 56.dp)
+            // The slot keeps its 56 dp; the ring is Modules' CircularWavyProgress (determinate while it downloads, a full ring for the
+            // other steps), thin enough to leave the shrunken icon free.
+            Box(Modifier.size(IconSlot), contentAlignment = Alignment.Center) {
+                AppIcon(status, iconSize)
+                if (job != null && active) {
+                    val ringStroke = rememberRoundStroke(3.dp)
+                    CircularWavyProgress(
+                        progress = { if (job.step == JobStep.DOWNLOADING) job.progress.coerceIn(0f, 1f) else 1f },
+                        modifier = Modifier.size(IconSlot),
+                        color = MaterialTheme.colorScheme.primary,
+                        stroke = ringStroke,
+                        trackStroke = ringStroke
+                    )
+                }
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 // The name and its words wrap between words, never cut (containers with text are adaptive, 2026-10-30).
                 Text(
@@ -173,7 +211,7 @@ internal fun AppRow(
                 }
             }
             if (active) {
-                QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
+                CancelButton(status.entry.packageName, actions)
             } else if (beforeButton != null) {
                 // The link and the button stay close, so the line of words keeps the room.
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,10 +222,11 @@ internal fun AppRow(
                 ActionButton(status, actions)
             }
         }
+        // The progress line starts at the card's content start, under the icon, and ends level with the button's end edge.
+        if (job != null && active) Progress(job)
         val failed = job != null && job.step == JobStep.FAILED
-        if (active || failed || below != null) {
+        if (failed || below != null) {
             Column(Modifier.padding(start = TextStart - 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (job != null && active) Progress(job)
                 if (job != null && failed) {
                     Text(jobText(LocalContext.current, job), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -198,21 +237,53 @@ internal fun AppRow(
     }
 }
 
+// The 56 dp icon slot of a row, and Material 3 Expressive's Medium button height (ButtonMediumTokens.ContainerHeight, androidx
+// compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/tokens/ButtonMediumTokens.kt): the height is a minimum
+// on the modifier given to BoldButton, whose GlassTarget passes it to the button, so the glass, the ripple and UpdateButton's glint share
+// the same 56 dp bounds, and a label that wraps still grows the button. The 24 dp sides (LeadingSpace, TrailingSpace) are
+// ButtonDefaults.ContentPadding's own.
+private val IconSlot = 56.dp
+private val MediumHeight = 56.dp
+
+/** The label of a Medium button: titleMedium (16 sp), wrapping between words. */
+@Composable
+private fun MediumLabel(text: String) {
+    Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+}
+
+/** Cancel in the place of the state button while a job runs: BoldButton, not filled, at the Medium size. */
+@Composable
+private fun CancelButton(packageName: String, actions: CardActions, modifier: Modifier = Modifier) {
+    BoldButton(
+        onClick = { actions.onCancel(packageName) },
+        modifier = modifier.heightIn(min = MediumHeight),
+        shape = ShapeDefaults.Large
+    ) { MediumLabel(stringResource(R.string.cancel)) }
+}
+
 /** The button of an app's state at its natural width (a row's), or as [modifier] sets it (the app page's full width). */
 @Composable
 internal fun ActionButton(status: AppStatus, actions: CardActions, modifier: Modifier = Modifier) {
+    val medium = modifier.heightIn(min = MediumHeight)
     when (val action = HomeModel.action(status)) {
         // Store's own row, up to date: no Open (it would only reopen Store), as GrapheneOS' App Store hides it for itself
         // (https://github.com/GrapheneOS/AppStore, app/src/main/java/app/grapheneos/apps/ui/DetailsScreen.kt, UP_TO_DATE: pkgName != selfPkgName).
         HomeModel.Action.Open -> if (!OwnUpdate.isOwn(status.entry.packageName)) {
-            BoldButton(onClick = { actions.onOpen(status) }, modifier = modifier, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_open)) }
+            BoldButton(onClick = { actions.onOpen(status) }, modifier = medium, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_open)) }
         }
-        HomeModel.Action.Update -> UpdateButton(onClick = { actions.onPrimary(status) }, label = stringResource(R.string.action_update), modifier = modifier, shape = ShapeDefaults.Large)
-        HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, filled = true, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_install)) }
-        HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = modifier, shape = ShapeDefaults.Large) { Text(stringResource(R.string.action_hand_over)) }
-        is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = modifier.widthIn(max = 150.dp), enabled = false, shape = ShapeDefaults.Large) {
+        HomeModel.Action.Update -> UpdateButton(
+            onClick = { actions.onPrimary(status) },
+            label = stringResource(R.string.action_update),
+            modifier = medium,
+            shape = ShapeDefaults.Large,
+            labelStyle = MaterialTheme.typography.titleMedium
+        )
+        HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = medium, filled = true, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_install)) }
+        HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = medium, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_hand_over)) }
+        is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = medium.widthIn(max = 150.dp), enabled = false, shape = ShapeDefaults.Large) {
             Text(
                 if (action.sdk > 0) stringResource(action.reason, HomeModel.androidName(action.sdk)) else stringResource(action.reason),
+                style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -222,15 +293,16 @@ internal fun ActionButton(status: AppStatus, actions: CardActions, modifier: Mod
 }
 
 /**
- * The one button of an app on its page: Open, Update, Install, Hand over, or the reason it cannot be had. While the queue works on the
- * app it shows the step, a bar and Cancel; a failed try shows its reason above the button, which is offered again.
+ * The one button of an app on its page: Open, Update, Install, Hand over, or the reason it cannot be had, full width at the Medium size.
+ * While the queue works on the app it shows the progress line above a full-width Cancel; a failed try shows its reason above the button,
+ * which is offered again.
  */
 @Composable
 internal fun StateButton(status: AppStatus, job: InstallJob?, actions: CardActions, modifier: Modifier = Modifier) {
     if (job != null && job.step.active) {
-        Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Progress(job)
-            QuietButton(onClick = { actions.onCancel(status.entry.packageName) }, modifier = Modifier.fillMaxWidth(), shape = ShapeDefaults.Large) { Text(stringResource(R.string.cancel)) }
+            CancelButton(status.entry.packageName, actions, Modifier.fillMaxWidth())
         }
         return
     }
@@ -242,20 +314,62 @@ internal fun StateButton(status: AppStatus, job: InstallJob?, actions: CardActio
     }
 }
 
+/** A round-capped stroke of [width], as LinearThickWavyProgressIndicatorSample builds its thick one (androidx material3 samples, ProgressIndicatorSamples.kt). */
+@Composable
+private fun rememberRoundStroke(width: Dp): Stroke {
+    val px = with(LocalDensity.current) { width.toPx() }
+    return remember(px) { Stroke(width = px, cap = StrokeCap.Round) }
+}
+
 /**
- * The step in words ("Downloading 12 MB of 39 MB", as Google Play) and its bar: Material 3 Expressive's wavy one (Modules'
- * LinearWavyProgress, from androidx material3's LinearWavyProgressIndicator,
- * https://github.com/androidx/androidx/blob/androidx-main/compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/WavyProgressIndicator.kt):
- * determinate while it downloads, indeterminate for the other active steps.
+ * The progress line of a running job: the percentage in a box as wide as the icon slot, so it sits centred under the icon, then the row's
+ * 12 dp gap and Material 3 Expressive's thick wavy bar (Modules' LinearWavyProgress, from androidx material3's LinearWavyProgressIndicator,
+ * https://github.com/androidx/androidx/blob/androidx-main/compose/material3/material3/src/commonMain/kotlin/androidx/compose/material3/WavyProgressIndicator.kt;
+ * thick as LinearThickWavyProgressIndicatorSample: 8 dp strokes, Modifier.height(14.dp)) filling the rest of the width. Determinate with
+ * the percentage while it downloads; indeterminate, the percentage slot empty, for the other active steps. TalkBack reads the step.
  */
 @Composable
 internal fun Progress(job: InstallJob, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(jobText(LocalContext.current, job), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-        if (job.step == JobStep.DOWNLOADING) {
-            LinearWavyProgress(progress = { job.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
-        } else if (job.step.active) {
-            LinearWavyProgress(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
+    val context = LocalContext.current
+    val description = jobText(context, job)
+    val thick = rememberRoundStroke(8.dp)
+    val percent = remember { NumberFormat.getPercentInstance() }
+    Row(
+        modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val downloading = job.step == JobStep.DOWNLOADING
+        // fixed size: the slot is exactly the icon's width, so the figure sits centred under the icon; the figure may spill past it, never cut.
+        Box(Modifier.width(IconSlot), contentAlignment = Alignment.Center) {
+            if (downloading) {
+                Text(
+                    percent.format(job.progress.coerceIn(0f, 1f).toDouble()),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.wrapContentWidth(unbounded = true)
+                )
+            }
+        }
+        if (downloading) {
+            LinearWavyProgress(
+                progress = { job.progress.coerceIn(0f, 1f) },
+                modifier = Modifier.weight(1f).height(14.dp),
+                color = MaterialTheme.colorScheme.primary,
+                stroke = thick,
+                trackStroke = thick
+            )
+        } else {
+            LinearWavyProgress(
+                modifier = Modifier.weight(1f).height(14.dp),
+                color = MaterialTheme.colorScheme.primary,
+                stroke = thick,
+                trackStroke = thick
+            )
         }
     }
 }

@@ -199,7 +199,9 @@ class HomeContentTest {
         val running = InstallJob(calculator.entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.42f)
         var state by mutableStateOf(HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running), details = Fixtures.details))
         compose.setContent { HomeContent(state, onRetry = {}, onCancel = { cancelled = it }, onCancelAll = { all++ }) }
-        compose.onAllNodesWithTextCount("Downloading 42%", 2)
+        // The card shows the figure; the step in words is the progress line's TalkBack label.
+        compose.onAllNodesWithTextCount("42%", 2)
+        compose.onAllNodesWithDescriptionCount("Downloading 42%", 2)
         compose.onNodeWithText("Cancel all").performClick()
         assertEquals(1, all)
         state = HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running.copy(step = JobStep.FAILED, why = "No connection.")))
@@ -245,7 +247,7 @@ class HomeContentTest {
         assertEquals("Downloading 31%", words(12_000_000, 0))
         val running = InstallJob(calculator.entry, handOver = false, serial = 1, step = JobStep.DOWNLOADING, progress = 0.31f, bytesDone = 12_000_000, bytesTotal = 39_000_000)
         compose.setContent { HomeContent(HomeState(loaded = true, apps = listOf(calculator, dialer), jobs = listOf(running), details = Fixtures.details), onRetry = {}) }
-        compose.onAllNodesWithTextCount("Downloading 12 MB of 39 MB", 2)
+        compose.onAllNodesWithDescriptionCount("Downloading 12 MB of 39 MB", 2)
     }
 
     @Test
@@ -260,5 +262,12 @@ class HomeContentTest {
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTextCount(text: String, atLeast: Int) {
         val found = onAllNodesWithText(text, substring = false).fetchSemanticsNodes().size
         assertEquals("nodes with \"$text\": $found", true, found >= atLeast)
+    }
+
+    // The same count for an accessibility label, on the merged tree: Compose's onAllNodesWithContentDescription
+    // (https://developer.android.com/develop/ui/compose/testing/apis, "Assertions": onAllNodesWithContentDescription(...).assertCountEquals).
+    private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithDescriptionCount(text: String, atLeast: Int) {
+        val found = onAllNodesWithContentDescription(text, substring = false).fetchSemanticsNodes().size
+        assertEquals("nodes described \"$text\": $found", true, found >= atLeast)
     }
 }

@@ -8,13 +8,13 @@
 agp = "9.5.0"
 kotlin = "2.4.21"
 coreKtx = "1.19.1"
-lifecycle = "2.9.4"
-activityCompose = "1.11.0"
+lifecycle = "2.11.0"
+activityCompose = "1.13.0"
 # Compose that compiles against API 37. Moved by Dependabot.
 composeBom = "2026.09.00"
 navigation = "2.10.2"
 koin = "4.2.2"
-ktor = "3.6.0"
+ktor = "3.6.1"
 coil = "3.6.3"
 media3 = "1.11.1"
 # Glide's GIF decoder (pure Java), run only inside the isolated DecoderService.
