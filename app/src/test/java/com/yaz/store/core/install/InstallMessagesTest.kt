@@ -3,6 +3,7 @@ package com.yaz.store.core.install
 import android.content.pm.PackageInstaller
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -68,5 +69,37 @@ class InstallMessagesTest {
         assertEquals("The installation failed. (INSTALL_FAILED_SOMETHING_NEW)", text)
         assertEquals("The installation failed.", message(PackageInstaller.STATUS_FAILURE, "free text only").message)
         assertEquals("The installation failed.", message(PackageInstaller.STATUS_FAILURE, null).message)
+    }
+
+    // The system's own text kept beside the plain message: App Manager's showInstallationFinishedDialog (statusMessage under
+    // the message) and GrapheneOS's PackageInstallerError (message = EXTRA_STATUS_MESSAGE kept whole)
+    @Test
+    fun `the system's text is kept as detail, for a known code and for an unknown one`() {
+        val known = message(PackageInstaller.STATUS_FAILURE, "INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package signatures do not match")
+        assertEquals("INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package signatures do not match", known.detail)
+        assertTrue(known.offerUninstall)
+        val unknown = message(PackageInstaller.STATUS_FAILURE, "INSTALL_FAILED_SOMETHING_NEW: details from the system <b>")
+        assertEquals("INSTALL_FAILED_SOMETHING_NEW: details from the system <b>", unknown.detail)
+        assertEquals("The installation failed. (INSTALL_FAILED_SOMETHING_NEW)", unknown.message)
+        assertEquals("free text only", message(PackageInstaller.STATUS_FAILURE, "free text only").detail)
+        assertEquals("Session failed", message(PackageInstaller.STATUS_FAILURE_STORAGE, "Session failed").detail)
+        assertEquals("Session failed", message(InstallMessages.SESSION_COMMIT, "Session failed").detail)
+    }
+
+    @Test
+    fun `no detail when the system gave no text`() {
+        assertNull(message(PackageInstaller.STATUS_FAILURE, null).detail)
+        assertNull(message(PackageInstaller.STATUS_FAILURE, "").detail)
+        assertNull(message(PackageInstaller.STATUS_FAILURE, "  \n\t ").detail)
+        assertNull(message(PackageInstaller.STATUS_FAILURE_ABORTED).detail)
+    }
+
+    @Test
+    fun `the detail drops control and bidi characters and is cut`() {
+        assertEquals(
+            "INSTALL_FAILED_X: abc",
+            message(PackageInstaller.STATUS_FAILURE, "INSTALL_FAILED_X:\u0000 a\u202Eb\u2066c\u200F\u0007").detail
+        )
+        assertEquals(1000, message(PackageInstaller.STATUS_FAILURE, "a".repeat(5000)).detail?.length)
     }
 }

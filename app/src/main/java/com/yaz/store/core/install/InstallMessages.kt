@@ -9,9 +9,18 @@ import com.yaz.store.core.apk.ApkInfoCodec
 // The status codes are PackageInstaller's STATUS_* and the messages of its EXTRA_STATUS_MESSAGE
 // (INSTALL_FAILED_* of the package manager):
 // https://developer.android.com/reference/android/content/pm/PackageInstaller#STATUS_FAILURE_INCOMPATIBLE
+// The system's own text kept beside the plain message, as App Manager's showInstallationFinishedDialog (GPL-3.0-or-later,
+// the statusMessage appended under the message) and GrapheneOS's PackageInstallerError (message = EXTRA_STATUS_MESSAGE kept whole):
+// https://github.com/MuntashirAkon/AppManager/blob/master/app/src/main/java/io/github/muntashirakon/AppManager/apk/installer/PackageInstallerActivity.java#showInstallationFinishedDialog
+// https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PkgInstallerStatusReceiver.kt#PackageInstallerError
+// not ported: the italic span and the dialog (the app's UI shows [InstallFailure.detail]); GrapheneOS's request, status,
+// coarseStatus and Parcelable (the kit's failure is not sent between processes).
 
-/** An install that did not go in: what to tell the person, and whether uninstalling the installed app first would help. */
-data class InstallFailure(val message: String, val offerUninstall: Boolean = false)
+/**
+ * An install that did not go in: what to tell the person, and whether uninstalling the installed app first would help.
+ * [detail] is the system's own text (EXTRA_STATUS_MESSAGE), for the error window; null when the system gave none.
+ */
+data class InstallFailure(val message: String, val offerUninstall: Boolean = false, val detail: String? = null)
 
 object InstallMessages {
     /** The installer's own failures, before Android is asked (App Manager's STATUS_FAILURE_SESSION_*). */
@@ -21,8 +30,13 @@ object InstallMessages {
 
     private val CODE = Regex("INSTALL_[A-Z_]+")
 
+    /** The system's text kept whole in [InstallFailure.detail], cleaned like any outside text, cut at this many characters. */
+    private const val DETAIL_MAX = 1000
+
     fun failure(status: Int, statusMessage: String?, otherPackage: String? = null): InstallFailure {
         val detail = detail(statusMessage)
+        // App Manager's showInstallationFinishedDialog: the message from getStringFromStatus, the statusMessage beside it
+        val raw = statusMessage?.let { ApkInfoCodec.clean(it, DETAIL_MAX) }?.takeIf { it.isNotEmpty() }
         return when (status) {
             PackageInstaller.STATUS_FAILURE_ABORTED -> InstallFailure("The installation was cancelled.")
             PackageInstaller.STATUS_FAILURE_BLOCKED -> InstallFailure(
@@ -41,7 +55,7 @@ object InstallMessages {
             SESSION_WRITE -> InstallFailure("Could not copy the files to the installer.")
             SESSION_COMMIT -> InstallFailure("Android did not accept the installation.")
             else -> byCode(detail) ?: InstallFailure("The installation failed." + (detail?.let { " ($it)" } ?: ""))
-        }
+        }.copy(detail = raw)
     }
 
     /** The package manager's own reason, when it is one of the common ones. */

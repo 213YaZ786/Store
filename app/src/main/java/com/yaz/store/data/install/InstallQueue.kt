@@ -301,7 +301,7 @@ class InstallQueue(
             }
             when (result) {
                 is InstallState.Done -> Unit
-                is InstallState.Failed -> throw PackageInstallerError(failureWords(result.failure), statusMessage = null)
+                is InstallState.Failed -> throw PackageInstallerError(failureWords(result.failure), statusMessage = result.failure.detail)
                 else -> throw Refused("The installation did not finish.")
             }
         }
@@ -325,7 +325,7 @@ class InstallQueue(
     // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PkgInstallerStatusReceiver.kt#PackageInstallerError
     // The source's PackageInstallerError(request, status, message, coarseStatus): the status in plain words and `message`, the EXTRA_STATUS_MESSAGE of the system.
     // not ported: request, status, coarseStatus (the queue knows its entry; the kit turns the status codes into [why]) and Parcelable (the error never leaves the process).
-    // The install kit's InstallFailure (Modules shared/install, core/install/InstallMessages.kt) keeps no raw text yet, so [statusMessage] is null until the template carries it.
+    // [statusMessage] is the install kit's InstallFailure.detail (Modules shared/install, core/install/InstallMessages.kt): the system's text, cleaned, null when none.
     private class PackageInstallerError(val why: String, val statusMessage: String?) : Exception(why)
 
     private fun netWords(e: NetError): String = when (e.kind) {
