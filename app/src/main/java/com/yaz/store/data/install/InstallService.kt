@@ -89,6 +89,7 @@ class InstallService : Service(), KoinComponent {
         super.onCreate()
         up = true
         InstallNotices.createChannel(this)
+        ConfirmNotices.createChannels(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -112,6 +113,8 @@ class InstallService : Service(), KoinComponent {
             scope.launch {
                 queue.jobs.collect { list ->
                     if (!up) return@collect
+                    // A confirmation asked or a failure while Store is not in front is told by a notification (data/install/InstallNotices.kt).
+                    ConfirmNotices.onReceive(this@InstallService, list)
                     if (InstallServicePlan.next(list.count { it.step.active }, up) == ServiceStep.STOP) stop() else InstallNotices.post(this@InstallService, list)
                 }
             }

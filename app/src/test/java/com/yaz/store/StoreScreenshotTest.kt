@@ -139,7 +139,7 @@ class StoreScreenshotTest {
 
     @Test
     fun settingsOn() = capture("settings_on") {
-        SettingsContent(Settings(backgroundCheck = true, wifiOnly = true, pureBlack = true), onBack = {})
+        SettingsContent(Settings(backgroundCheck = true, network = 2, pureBlack = true), onBack = {})
     }
 
     @Test

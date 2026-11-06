@@ -51,16 +51,23 @@ object HomeModel {
     fun sizeOf(status: AppStatus, details: Map<String, ReleaseDetails>): Long? =
         status.entry.apkName?.let { details[status.entry.detailsKey]?.sizes?.get(it) }
 
+    // The states of an app of ours installed here that a switched-off app overrides: current, update waiting, to hand over.
+    private val DISABLED_STATES = setOf(AppState.UP_TO_DATE, AppState.UPDATE, AppState.HAND_OVER)
+
     /** What a card's one button does, or why it cannot. */
     sealed interface Action {
         data object Open : Action
         data object Update : Action
         data object Install : Action
         data object HandOver : Action
+        /** The app is turned off in Android's settings: neither Update nor Open, only its App info page (GrapheneOS' DetailsScreen.setupButtons, DISABLED). */
+        data object Enable : Action
         data class Disabled(@StringRes val reason: Int, val sdk: Int = 0) : Action
     }
 
-    fun action(status: AppStatus): Action = when (status.state) {
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/ui/DetailsScreen.kt#setupButtons
+    // PackageState.Status.DISABLED comes before OUT_OF_DATE and UP_TO_DATE there: a disabled app of ours offers Enable and nothing else.
+    fun action(status: AppStatus): Action = if (status.installed?.enabled == false && status.state in DISABLED_STATES) Action.Enable else when (status.state) {
         AppState.UP_TO_DATE -> Action.Open
         AppState.UPDATE -> Action.Update
         AppState.NOT_INSTALLED -> Action.Install

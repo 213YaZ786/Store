@@ -33,6 +33,7 @@ import com.yaz.store.data.sparse.SparseApk
 import com.yaz.store.data.sparse.SparseInspector
 import com.yaz.store.data.sparse.SparseProbe
 import com.yaz.store.data.settings.SettingsStore
+import com.yaz.store.data.settings.getAutoUpdateJobNetworkTypePref
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -72,7 +73,7 @@ val appModule = module {
     // (data/install). Its work runs in the application's own scope, off the main thread; the foreground service starts when an entry is queued.
     single { Installer(androidContext(), get()) }
     single { ApkInspector(androidContext()) }
-    single { StoreBackend(androidContext(), get(), get(), get(), wifiOnly = { get<SettingsStore>().current.wifiOnly }) }
+    single { StoreBackend(androidContext(), get(), get(), get(), network = { getAutoUpdateJobNetworkTypePref(get<SettingsStore>().current) }) }
     single {
         val app = androidContext()
         InstallQueue(
@@ -95,7 +96,7 @@ val appModule = module {
     }
     single {
         val app = androidContext()
-        val backend = StoreBackend(app, get(), get(), Installer(app, get()), wifiOnly = { get<SettingsStore>().current.wifiOnly })
+        val backend = StoreBackend(app, get(), get(), Installer(app, get()), network = { getAutoUpdateJobNetworkTypePref(get<SettingsStore>().current) })
         Staging(backend, File(app.cacheDir, DOWNLOADS), installedVersion = { Installed.read(app, it)?.versionCode })
     }
     single {

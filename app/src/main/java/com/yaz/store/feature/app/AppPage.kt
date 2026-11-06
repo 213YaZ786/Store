@@ -52,14 +52,14 @@ import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.net.ReleaseNet
 import com.yaz.store.feature.home.AppIcon
 import com.yaz.store.feature.home.CardActions
-import com.yaz.store.feature.home.GroupLabel
 import com.yaz.store.feature.home.HomeModel
 import com.yaz.store.feature.home.StateButton
-import com.yaz.store.feature.home.TwoActions
 import androidx.compose.ui.text.style.TextAlign
 import com.yaz.store.feature.home.detailsKey
+import com.yaz.store.ui.component.BalancedFlow
 import com.yaz.store.ui.component.BoldButton
 import com.yaz.store.ui.component.FloatingAction
+import com.yaz.store.ui.component.LocalGroupLabelSize
 import com.yaz.store.ui.component.FloatingFrame
 import com.yaz.store.ui.component.FloatingTop
 import com.yaz.store.ui.component.entrancePop
@@ -117,28 +117,38 @@ fun AppPageContent(
                 // The primary action full width under the header (GrapheneOS AppStore's details_screen.xml); only the buttons are taps.
                 Column(Modifier.fillMaxWidth().entrancePop(seen, "page-actions", 1), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     val action = HomeModel.action(status)
-                    val installed = status.installed != null && status.state != AppState.FOREIGN
-                    if (action == HomeModel.Action.Open && OwnUpdate.isOwn(entry.packageName) && !busy) {
-                        // Store's own page when up to date: nothing to open (it is open) and Store does not uninstall itself.
-                    } else if (action == HomeModel.Action.Open && !busy) {
-                        // Open and Uninstall side by side, as Google Play's header has them, stacked when the words do not fit.
-                        val open = stringResource(R.string.action_open)
-                        val uninstall = stringResource(R.string.action_uninstall)
-                        TwoActions(
-                            open, uninstall,
-                            first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(open) } },
-                            second = { BoldButton(onClick = { onUninstall(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(uninstall) } }
-                        )
-                    } else {
-                        StateButton(status, job, actions, Modifier.fillMaxWidth())
-                        if (installed && !busy) {
-                            val open = stringResource(R.string.action_open)
-                            val uninstall = stringResource(R.string.action_uninstall)
-                            TwoActions(
-                                open, uninstall,
-                                first = { BoldButton(onClick = { actions.onOpen(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(open) } },
-                                second = { BoldButton(onClick = { onUninstall(status) }, modifier = it, shape = ShapeDefaults.Large) { GroupLabel(uninstall) } }
-                            )
+                    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/ui/DetailsScreen.kt#setupButtons
+                    // The status of GrapheneOS' PackageState.Status that setupButtons reads (feature/app/AppPageScreen.kt).
+                    val packageStatus = when {
+                        busy -> Status.INSTALLING
+                        status.installed == null || status.state == AppState.FOREIGN -> Status.NOT_INSTALLED
+                        action == HomeModel.Action.Enable -> Status.DISABLED
+                        status.state == AppState.UP_TO_DATE -> Status.UP_TO_DATE
+                        else -> Status.OUT_OF_DATE
+                    }
+                    // Primary: StateButton (Install, Update, Hand over, the reason, Enable for a disabled app, Cancel with the progress); an app that
+                    // is up to date has Open instead, among the secondary buttons.
+                    if (packageStatus != Status.UP_TO_DATE) StateButton(status, job, actions, Modifier.fillMaxWidth())
+                    // Secondary: Open, App info and Uninstall in the kit's BalancedFlow, measured and balanced, as SMS's Palette of the message menu lays its
+                    // tiles (https://github.com/213YaZ786/SMS/blob/main/app/src/main/java/com/yaz/sms/feature/thread/MessageMenu.kt#L490-L499).
+                    val secondary = if (busy) emptyList() else setupButtons(
+                        packageStatus, OwnUpdate.isOwn(entry.packageName),
+                        open = { actions.onOpen(status) },
+                        appInfo = { actions.onInfo(status) },
+                        uninstall = { onUninstall(status) }
+                    )
+                    val labels = secondary.map { stringResource(it.first) }
+                    BalancedFlow(
+                        labels = labels,
+                        style = MaterialTheme.typography.labelLarge,
+                        floor = 96.dp,
+                        gap = 8.dp,
+                        side = 24.dp,
+                        maxPerRow = 3,
+                        fill = true
+                    ) { index, tileModifier ->
+                        BoldButton(onClick = secondary[index].second, modifier = tileModifier, shape = ShapeDefaults.Large) {
+                            Text(labels[index], textAlign = TextAlign.Center, fontSize = LocalGroupLabelSize.current)
                         }
                     }
                 }

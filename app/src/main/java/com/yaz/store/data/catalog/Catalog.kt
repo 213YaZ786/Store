@@ -583,7 +583,7 @@ class Catalog(
         (repoWords?.description(repo, tags)?.takeIf { it.isNotBlank() } ?: fromRelease).ifEmpty { about }
 
     private fun errorOf(e: NetError): CatalogError = when (e.kind) {
-        NetError.Kind.OFFLINE, NetError.Kind.METERED -> CatalogError.Offline
+        NetError.Kind.OFFLINE, NetError.Kind.METERED, NetError.Kind.ROAMING -> CatalogError.Offline
         NetError.Kind.RATE_LIMITED -> CatalogError.RateLimited(e.resetAt)
         NetError.Kind.NOT_FOUND, NetError.Kind.REFUSED -> CatalogError.Refused
     }

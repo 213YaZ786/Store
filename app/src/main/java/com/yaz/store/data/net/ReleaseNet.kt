@@ -32,7 +32,8 @@ import java.security.MessageDigest
 /** Why a request failed: no network, GitHub's rate limit, an address or an answer refused, a missing page. */
 class NetError(val kind: Kind, val resetAt: Long? = null, message: String) : Exception(message) {
     /** [METERED]: the person asked for Wi-Fi only and the phone's network is metered; nothing was asked of GitHub (StoreBackend). */
-    enum class Kind { OFFLINE, RATE_LIMITED, NOT_FOUND, REFUSED, METERED }
+    /** [ROAMING]: the person asked for a network that is not roaming and the phone's is; nothing was asked of GitHub (StoreBackend). */
+    enum class Kind { OFFLINE, RATE_LIMITED, NOT_FOUND, REFUSED, METERED, ROAMING }
 }
 
 /** Where the catalog reads from: the network, or a fake in a test. Every method throws [NetError]. */

@@ -69,6 +69,7 @@ import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.JobStep
 import com.yaz.store.data.settings.SettingsStore
+import com.yaz.store.feature.app.appDetailsIntent
 import com.yaz.store.feature.eggs.StoreEgg
 import com.yaz.store.navigation.WidthClass
 import com.yaz.store.ui.component.BannerAction
@@ -181,7 +182,7 @@ fun HomeContent(
     var egg by remember { mutableStateOf<Offset?>(null) }
     val askedRefresh = rememberRefreshHaptics(state.loading, state.error != null)
     val pull = rememberPullToRefreshState()
-    val actions = remember(onInstall, onOpen, onPage, onCancel) { CardActions(onInstall, onOpen, onPage, onCancel) }
+    val actions = remember(onInstall, onOpen, onPage, onCancel) { CardActions(onInstall, onOpen, onPage, onCancel, onInfo = { runCatching { context.startActivity(appDetailsIntent(it.entry.packageName)) } }) }
     // An entry of the queue whose app is not in the list read from GitHub (the list changed under it) keeps its row until it ends.
     val orphans = state.jobs.filter { job -> state.apps.none { it.entry.packageName == job.entry.packageName } }
     val empty = state.apps.isEmpty() && orphans.isEmpty()

@@ -28,6 +28,8 @@ import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.Installed
+import com.yaz.store.data.settings.Settings
+import com.yaz.store.data.settings.getAutoUpdateJobNetworkType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,18 +44,23 @@ object UpdateJobs {
     const val JOB_ID = 7402
     private const val DAY = 24L * 60 * 60 * 1000
 
-    /** Makes the scheduler match [enabled]: the job once a day on an unmetered network, or no job. */
-    fun sync(context: Context, enabled: Boolean) {
+    /**
+     * Makes the scheduler match [settings]: the job once a day on the network the person chose (any, not roaming or unmetered;
+     * GrapheneOS' AutoUpdatePrefs.getAutoUpdateJobNetworkType), or no job.
+     */
+    fun sync(context: Context, settings: Settings) {
         val scheduler = context.getSystemService(JobScheduler::class.java) ?: return
         val pending = scheduler.getPendingJob(JOB_ID)
-        if (!enabled) {
+        if (!settings.backgroundCheck) {
             if (pending != null) scheduler.cancel(JOB_ID)
             return
         }
+        // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/autoupdate/AutoUpdatePrefs.kt#getAutoUpdateJobNetworkType
+        val networkType = getAutoUpdateJobNetworkType(settings)
         // The same job is left alone, so a start of the app does not push its next run back.
-        if (pending != null && pending.isPeriodic && pending.intervalMillis == DAY && pending.networkType == JobInfo.NETWORK_TYPE_UNMETERED) return
+        if (pending != null && pending.isPeriodic && pending.intervalMillis == DAY && pending.networkType == networkType) return
         val info = JobInfo.Builder(JOB_ID, ComponentName(context, UpdateCheckJob::class.java))
-            .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
+            .setRequiredNetworkType(networkType)
             .setPeriodic(DAY)
             .setPersisted(false)
             .build()

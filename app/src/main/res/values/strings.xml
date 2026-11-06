@@ -69,9 +69,11 @@
     <string name="settings_text_size_summary">%1$s, on top of Android\'s font size</string>
     <string name="settings_updates">Updates</string>
     <string name="settings_background">Check in the background</string>
-    <string name="settings_background_summary">Once a day on Wi-Fi, with a notification when updates wait.</string>
-    <string name="settings_wifi_only">Only on Wi-Fi</string>
-    <string name="settings_wifi_only_summary">Downloads wait for an unmetered network.</string>
+    <string name="settings_background_summary">Once a day, with a notification when updates wait.</string>
+    <string name="settings_network">Download on</string>
+    <string name="settings_network_any">Any network</string>
+    <string name="settings_network_not_roaming">Not when roaming</string>
+    <string name="settings_network_unmetered">Wi-Fi only</string>
     <string name="settings_about">About</string>
     <string name="settings_version">Store %1$s</string>
     <string name="settings_source_code">Source code</string>
@@ -93,16 +95,33 @@
     <!-- Setup guide -->
     <string name="setup_title">Welcome to Store</string>
     <string name="setup_installs">Install apps</string>
-    <string name="setup_installs_allow">Allow installs</string>
+    <string name="setup_installs_summary">Store installs and updates our apps. Android asks you to allow installs from Store once. Tap to open that page.</string>
     <string name="setup_notifications">Notifications</string>
-    <string name="setup_notifications_allow">Allow notifications</string>
-    <string name="setup_done">Done</string>
+    <string name="setup_notifications_summary">Store tells you when an install needs your OK or did not work. Tap to allow notifications.</string>
+    <string name="setup_allowed">Allowed</string>
+    <string name="setup_not_allowed_yet">Not allowed yet</string>
+    <string name="setup_on">On</string>
+    <string name="setup_off">Off</string>
     <string name="setup_skip">Skip</string>
     <string name="setup_start">Start</string>
-    <string name="done">Done</string>
+
+    <!-- Error details -->
+    <string name="details">Details</string>
+    <string name="error_not_installed">%1$s was not installed</string>
+    <string name="dismiss">Close</string>
+    <string name="btn_copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="action_enable">Enable</string>
+    <string name="action_app_info">App info</string>
 
     <!-- Notifications -->
     <string name="channel_updates">Updates waiting</string>
+    <string name="channel_confirmation">Confirmation required</string>
+    <string name="channel_failed">Installs that failed</string>
+    <string name="notice_confirm_install">%1$s is ready to install</string>
+    <string name="notice_confirm_update">%1$s is ready to update</string>
+    <string name="notice_confirm_text">Android needs your OK.</string>
+    <string name="notice_failed_text">Tap for the details</string>
     <plurals name="notice_updates">
         <item quantity="one">%1$d update</item>
         <item quantity="other">%1$d updates</item>

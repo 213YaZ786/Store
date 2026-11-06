@@ -39,7 +39,7 @@ class RepoFiles(
                         file.delete()
                         tag.delete()
                     }
-                    NetError.Kind.OFFLINE, NetError.Kind.RATE_LIMITED, NetError.Kind.METERED -> seen.remove(key)
+                    NetError.Kind.OFFLINE, NetError.Kind.RATE_LIMITED, NetError.Kind.METERED, NetError.Kind.ROAMING -> seen.remove(key)
                     NetError.Kind.REFUSED -> Unit
                 }
                 return@synchronized if (e.kind == NetError.Kind.NOT_FOUND) null else stored

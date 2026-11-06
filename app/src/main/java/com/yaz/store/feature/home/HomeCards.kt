@@ -37,7 +37,9 @@ import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -66,6 +68,7 @@ import com.yaz.store.data.install.JobStep
 import com.yaz.store.ui.component.BoldButton
 import com.yaz.store.ui.component.CircularWavyProgress
 import com.yaz.store.ui.component.LinearWavyProgress
+import com.yaz.store.ui.component.QuietButton
 import com.yaz.store.ui.component.SegmentedGap
 import com.yaz.store.ui.component.ZoneSurface
 import com.yaz.store.ui.component.entrancePop
@@ -77,7 +80,9 @@ class CardActions(
     val onPrimary: (AppStatus) -> Unit,
     val onOpen: (AppStatus) -> Unit,
     val onPage: (AppStatus) -> Unit,
-    val onCancel: (String) -> Unit
+    val onCancel: (String) -> Unit,
+    /** The app's App info page in Android's settings: Enable of a disabled app, App info on its page. */
+    val onInfo: (AppStatus) -> Unit = {}
 )
 
 /**
@@ -161,6 +166,7 @@ internal fun AppRow(
     beforeButton: (@Composable () -> Unit)? = null
 ) {
     val active = job != null && job.step.active
+    var showDetails by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
     // Google Play's download row: the icon shrinks inside its slot and a ring runs around it.
     val iconSize by animateDpAsState(if (active) 44.dp else 56.dp, label = "iconSize")
@@ -229,6 +235,20 @@ internal fun AppRow(
             Column(Modifier.padding(start = TextStart - 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (job != null && failed) {
                     Text(jobText(LocalContext.current, job), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    // Details opens the source's ErrorDialog (GrapheneOS' App Store, ui/ErrorDialog.kt): "<App> was not installed", the reason, Copy and Close.
+                    QuietButton(onClick = { showDetails = true }, shape = ShapeDefaults.Large) { Text(stringResource(R.string.details)) }
+                    if (showDetails) {
+                        ErrorDialog(
+                            ErrorTemplate(
+                                title = { ctx -> ctx.getString(R.string.error_not_installed, job.entry.label) },
+                                message = { ctx ->
+                                    val message = job.why ?: ctx.getString(R.string.job_failed_default)
+                                    if (job.detail.isNullOrBlank()) message else message + "\n\n" + job.detail
+                                }
+                            ),
+                            onDismiss = { showDetails = false }
+                        )
+                    }
                 }
                 below?.invoke(this)
             }
@@ -280,6 +300,8 @@ internal fun ActionButton(status: AppStatus, actions: CardActions, modifier: Mod
         )
         HomeModel.Action.Install -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = medium, filled = true, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_install)) }
         HomeModel.Action.HandOver -> BoldButton(onClick = { actions.onPrimary(status) }, modifier = medium, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_hand_over)) }
+        // A disabled app: Enable opens its App info page, as GrapheneOS' DetailsScreen does (DISABLED: btn_enable_package, appDetailsIntent).
+        HomeModel.Action.Enable -> BoldButton(onClick = { actions.onInfo(status) }, modifier = medium, filled = true, shape = ShapeDefaults.Large) { MediumLabel(stringResource(R.string.action_enable)) }
         is HomeModel.Action.Disabled -> BoldButton(onClick = {}, modifier = medium.widthIn(max = 150.dp), enabled = false, shape = ShapeDefaults.Large) {
             Text(
                 if (action.sdk > 0) stringResource(action.reason, HomeModel.androidName(action.sdk)) else stringResource(action.reason),

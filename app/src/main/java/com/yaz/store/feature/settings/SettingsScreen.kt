@@ -9,7 +9,7 @@ package com.yaz.store.feature.settings
 // The tiles are Modules' SettingsTiles (ui/component), the choices its ChoiceDialog.
 // Store's own: "Check in the background" starts or cancels the once-a-day job (data/update, GrapheneOS' App Store AutoUpdatePrefs,
 // https://github.com/GrapheneOS/AppStore) and asks for the notification permission when it is missing, with Compose's permission launcher
-// (https://developer.android.com/training/permissions/requesting); "Only on Wi-Fi" is read by StoreBackend at each download.
+// (https://developer.android.com/training/permissions/requesting); "Download on" (Any network, Not when roaming, Wi-Fi only) is read by StoreBackend at each download and by the job.
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -43,9 +43,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.yaz.store.BuildConfig
 import com.yaz.store.R
+import com.yaz.store.data.settings.NETWORK_ANY
+import com.yaz.store.data.settings.NETWORK_NOT_ROAMING
+import com.yaz.store.data.settings.NETWORK_UNMETERED
 import com.yaz.store.data.settings.Settings
 import com.yaz.store.data.settings.SettingsStore
 import com.yaz.store.data.settings.ThemeMode
+import com.yaz.store.data.settings.getAutoUpdateJobNetworkTypePref
 import com.yaz.store.data.update.UpdateJobs
 import com.yaz.store.navigation.LocalReadableInset
 import com.yaz.store.navigation.WidthClass
@@ -69,7 +73,7 @@ import com.yaz.store.ui.theme.TEXT_SCALES
 import com.yaz.store.ui.theme.textScaleLabel
 import org.koin.compose.koinInject
 
-private enum class OpenDialog { NONE, THEME, TEXT_SIZE }
+private enum class OpenDialog { NONE, THEME, TEXT_SIZE, NETWORK }
 
 /** The groups of settings: folded one under another on a phone, a list and the open one's page on a wide window. */
 private const val UPDATES = "updates"
@@ -91,13 +95,17 @@ fun SettingsScreen(onBack: () -> Unit, onGuide: () -> Unit = {}) {
         onTextScale = { scale -> store.update { it.copy(textScale = scale) } },
         onBackground = { on ->
             store.update { it.copy(backgroundCheck = on) }
-            UpdateJobs.sync(context, on)
+            UpdateJobs.sync(context, store.current)
             // The check only tells by notification: asked here when it is missing, as the setup guide asks it.
             if (on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) ask.launch(Manifest.permission.POST_NOTIFICATIONS)
         },
-        onWifiOnly = { on -> store.update { it.copy(wifiOnly = on) } },
+        // The job's network constraint follows the choice, as AutoUpdatePrefs' listener on pref_key_network_type_for_auto_update_job runs updateJobs.
+        onNetwork = { network ->
+            store.update { it.copy(network = network) }
+            UpdateJobs.sync(context, store.current)
+        },
         onGuide = onGuide
     )
 }
@@ -115,7 +123,7 @@ fun SettingsContent(
     onGlass: (Boolean) -> Unit = {},
     onTextScale: (Float) -> Unit = {},
     onBackground: (Boolean) -> Unit = {},
-    onWifiOnly: (Boolean) -> Unit = {},
+    onNetwork: (Int) -> Unit = {},
     onGuide: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
@@ -136,7 +144,14 @@ fun SettingsContent(
 
 
     val background = stringResource(R.string.settings_background)
-    val wifiOnly = stringResource(R.string.settings_wifi_only)
+    val downloadOn = stringResource(R.string.settings_network)
+    // GrapheneOS' ListPreference of the same name: Any network, Not when roaming, Wi-Fi only, the stored numbers 1, 3 and 2.
+    val networkOptions = listOf(
+        NETWORK_ANY to stringResource(R.string.settings_network_any),
+        NETWORK_NOT_ROAMING to stringResource(R.string.settings_network_not_roaming),
+        NETWORK_UNMETERED to stringResource(R.string.settings_network_unmetered)
+    )
+    val networkName = networkOptions.first { it.first == getAutoUpdateJobNetworkTypePref(settings) }.second
     val theme = stringResource(R.string.settings_theme)
     val pureBlack = stringResource(R.string.settings_pure_black)
     val glass = stringResource(R.string.settings_glass)
@@ -165,10 +180,10 @@ fun SettingsContent(
                 summary = stringResource(R.string.settings_background_summary),
                 checked = settings.backgroundCheck, onChange = onBackground
             ),
-            SettingsSwitchTile(
-                id = "wifiOnly", name = wifiOnly, title = wifiOnly, icon = AppIcons.Wifi,
-                summary = stringResource(R.string.settings_wifi_only_summary),
-                checked = settings.wifiOnly, onChange = onWifiOnly
+            SettingsActionTile(
+                id = "network", name = downloadOn, title = downloadOn, icon = AppIcons.Wifi,
+                value = networkName, summary = networkName,
+                onClick = { dialog = OpenDialog.NETWORK }
             )
         ),
         APPEARANCE to listOf(
@@ -296,6 +311,13 @@ fun SettingsContent(
             options = TEXT_SCALES.map { it to textScaleLabel(it) },
             selected = settings.textScale,
             onPick = onTextScale,
+            onDismiss = { dialog = OpenDialog.NONE }
+        )
+        OpenDialog.NETWORK -> ChoiceDialog(
+            title = downloadOn,
+            options = networkOptions,
+            selected = getAutoUpdateJobNetworkTypePref(settings),
+            onPick = onNetwork,
             onDismiss = { dialog = OpenDialog.NONE }
         )
         OpenDialog.NONE -> Unit

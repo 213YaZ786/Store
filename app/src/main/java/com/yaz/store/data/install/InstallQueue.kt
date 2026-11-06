@@ -73,7 +73,10 @@ data class InstallJob(
     val confirm: Intent? = null,
     /** The bytes read and the size of the APK while DOWNLOADING; [bytesTotal] is 0 when the server does not say. */
     val bytesDone: Long = 0,
-    val bytesTotal: Long = 0
+    val bytesTotal: Long = 0,
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PkgInstallerStatusReceiver.kt#onReceive
+    // The system's own text of a failed install (EXTRA_STATUS_MESSAGE, `message` of the source's PackageInstallerError), shown by the error dialog after [why]; null when there is none.
+    val detail: String? = null
 )
 
 /** What the queue needs from the phone and the network; the real one is StoreBackend, the tests give their own. */
@@ -230,13 +233,15 @@ class InstallQueue(
         } catch (e: CancellationException) {
             // The session is abandoned by run itself, only if this entry held the install turn.
             throw e
+        } catch (e: PackageInstallerError) {
+            end = { it.copy(step = JobStep.FAILED, why = e.why, detail = e.statusMessage, confirm = null) }
         } catch (e: Refused) {
             end = { it.copy(step = JobStep.FAILED, why = e.why, confirm = null) }
         } catch (e: UserRestrictionException) {
             end = { it.copy(step = JobStep.FAILED, why = e.message ?: "The installation could not be done.", confirm = null) }
         } catch (e: NetError) {
             // A lost network or Settings' "Only on Wi-Fi" keeps what was read; every other end deletes it.
-            keep = e.kind == NetError.Kind.OFFLINE || e.kind == NetError.Kind.METERED
+            keep = e.kind == NetError.Kind.OFFLINE || e.kind == NetError.Kind.METERED || e.kind == NetError.Kind.ROAMING
             end = { it.copy(step = JobStep.FAILED, why = netWords(e), confirm = null) }
         } catch (e: Exception) {
             // Whatever else goes wrong on this entry (a full disk, a refused service) must not stop the others.
@@ -296,7 +301,7 @@ class InstallQueue(
             }
             when (result) {
                 is InstallState.Done -> Unit
-                is InstallState.Failed -> throw Refused(failureWords(result.failure))
+                is InstallState.Failed -> throw PackageInstallerError(failureWords(result.failure), statusMessage = null)
                 else -> throw Refused("The installation did not finish.")
             }
         }
@@ -317,6 +322,12 @@ class InstallQueue(
 
     private fun failureWords(failure: InstallFailure): String = failure.message
 
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PkgInstallerStatusReceiver.kt#PackageInstallerError
+    // The source's PackageInstallerError(request, status, message, coarseStatus): the status in plain words and `message`, the EXTRA_STATUS_MESSAGE of the system.
+    // not ported: request, status, coarseStatus (the queue knows its entry; the kit turns the status codes into [why]) and Parcelable (the error never leaves the process).
+    // The install kit's InstallFailure (Modules shared/install, core/install/InstallMessages.kt) keeps no raw text yet, so [statusMessage] is null until the template carries it.
+    private class PackageInstallerError(val why: String, val statusMessage: String?) : Exception(why)
+
     private fun netWords(e: NetError): String = when (e.kind) {
         NetError.Kind.OFFLINE -> "No connection."
         NetError.Kind.RATE_LIMITED -> "GitHub's limit is reached. Try again later."
@@ -324,5 +335,6 @@ class InstallQueue(
         NetError.Kind.REFUSED -> "GitHub's answer was refused."
         // Settings' "Only on Wi-Fi", checked by StoreBackend.download (https://developer.android.com/training/basics/network-ops/managing).
         NetError.Kind.METERED -> "Waiting for Wi-Fi."
+        NetError.Kind.ROAMING -> "Waiting for a network that is not roaming"
     }
 }

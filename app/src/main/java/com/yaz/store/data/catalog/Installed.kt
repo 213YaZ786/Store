@@ -40,7 +40,9 @@ data class InstalledFacts(
     val versionName: String,
     val signers: Set<String>,
     val installer: String?,
-    val updateOwner: String?
+    val updateOwner: String?,
+    /** ApplicationInfo.enabled: false for an app turned off in Android's settings (GrapheneOS' PackageState.Status.DISABLED). */
+    val enabled: Boolean = true
 )
 
 /**
@@ -118,7 +120,8 @@ object Installed {
             versionName = ApkInfoCodec.clean(info.versionName.orEmpty(), CatalogRules.MAX_VERSION_NAME),
             signers = certificates.map { ApkInfoCodec.sha256Hex(it.toByteArray()) }.toSet(),
             installer = source?.installingPackageName,
-            updateOwner = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) source?.updateOwnerPackageName else null
+            updateOwner = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) source?.updateOwnerPackageName else null,
+            enabled = info.applicationInfo?.enabled ?: true
         )
     }
 }
