@@ -21,6 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.Openings
+import com.yaz.store.data.catalog.PackageChanges
 import com.yaz.store.data.install.InstallQueue
 import com.yaz.store.data.settings.SettingsStore
 import com.yaz.store.feature.app.AppPageScreen
@@ -48,9 +49,11 @@ fun StoreApp() {
     val catalog: Catalog = koinInject()
     val queue: InstallQueue = koinInject()
     val openings: Openings = koinInject()
-    val model: HomeViewModel = viewModel(context as ComponentActivity) { HomeViewModel(context.applicationContext as Application, catalog, queue, openings) }
-    // Each time the app comes to the front: the account and the phone are read again (an unchanged answer comes from the ETag cache).
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { model.load() }
+    val changes: PackageChanges = koinInject()
+    val model: HomeViewModel = viewModel(context as ComponentActivity) { HomeViewModel(context.applicationContext as Application, catalog, queue, openings, changes) }
+    // Each time the app comes to the front: the account and the phone are read again (an unchanged answer comes from the ETag cache); not forced,
+    // a load that ended well less than 5 s ago stands (GrapheneOS' requestRepoUpdate throttle). A pull or Retry forces.
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { model.load(force = false) }
 
     NavHost(nav, startDestination = if (settings.setupDone) Routes.HOME else Routes.SETUP) {
         composable(Routes.SETUP) {

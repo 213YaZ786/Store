@@ -6,11 +6,14 @@ package com.yaz.store.data.install
 // feature/install/InstallViewModel.kt, which collects Installer.state; AOSP's ApiDemos InstallApkSessionApi waits for the same status:
 // https://android.googlesource.com/platform/development/+/refs/heads/main/samples/ApiDemos/src/com/example/android/apis/content/InstallApkSessionApi.java).
 import android.os.Build
+import com.yaz.store.R
 import com.yaz.store.core.apk.ApkInfo
 import com.yaz.store.core.apk.ApkInspector
 import com.yaz.store.core.install.InstallRequest
 import com.yaz.store.core.install.InstallState
 import com.yaz.store.core.install.Installer
+import com.yaz.store.core.install.UserRestrictionException
+import com.yaz.store.core.install.isAppInstallationAllowed
 import com.yaz.store.data.catalog.Installed
 import com.yaz.store.data.net.NetError
 import com.yaz.store.data.net.ReleaseNet
@@ -66,6 +69,14 @@ class StoreBackend(
     }
 
     override fun cancelInstall() = installer.cancel()
+
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/util/PackageManagerUtils.kt#throwIfAppInstallationNotAllowed
+    // The source's check: isAppInstallationAllowed() false throws UserRestrictionException (core/install/InstallAllowed).
+    override fun throwIfAppInstallationNotAllowed() {
+        if (!isAppInstallationAllowed(context)) {
+            throw UserRestrictionException(context.getString(R.string.install_not_allowed))
+        }
+    }
 
     private companion object {
         val inspectLock = Mutex()

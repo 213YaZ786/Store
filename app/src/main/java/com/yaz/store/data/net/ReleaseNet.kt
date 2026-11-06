@@ -256,21 +256,43 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
         }
     }
 
-    // The kit's download, with its 200 MiB cap.
+    // The kit's download, with its 200 MiB cap, resumed. Ported from GrapheneOS' App Store (MIT),
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/InstallTask.kt#download :
+    // Accept-Encoding identity, "Range: bytes=<curSize>-" when the file already holds bytes, 206 appends, 200 starts again from 0
+    // (GrapheneOS fails on a 200 there; a server that ignores the range sends the whole file, which is taken whole), any other code fails.
+    // curSize is the file's length, as obtainAndWriteApk reads it from the cached file
+    // (https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/InstallTask.kt#obtainAndWriteApk).
+    // not ported: the fullSize known before the request, and the reuse of a complete file when curSize == fullSize (the sums file has no
+    // sizes; a complete file is answered 416 and fails as refused, then the next try starts again)
+    // not ported: the tmp file, fsync and rename (a partial file here is the file itself, checked by its sum before anything reads it)
+    // not ported: httpDownloadSemaphore (Store downloads without a cap, see InstallQueue)
     // [beforeRead] runs before each read of the body: a caller that is cancelled throws from it (kotlinx.coroutines' ensureActive),
     // so a download stops at the next buffer and the connection is closed by the finally below.
-    // [onProgress] gets the bytes read and the total (0 when the server does not say), once per percent.
+    // [onProgress] gets the bytes read (the resumed ones included) and the total (0 when the server does not say), once per percent.
     fun download(url: String, into: File, onProgress: (done: Long, total: Long) -> Unit, beforeRead: () -> Unit = {}) {
         val start = parse(url)
+        val curSize = if (into.isFile) into.length() else 0L
         try {
-            val conn = open(start, null) ?: throw NetError(NetError.Kind.REFUSED, message = "304 on a download")
+            val conn = open(start, null, if (curSize > 0) "bytes=$curSize-" else null, resume = true)
+                ?: throw NetError(NetError.Kind.REFUSED, message = "304 on a download")
             try {
-                val total = conn.contentLengthLong
+                val partial = conn.responseCode == 206
+                // 206: the length of the whole file is the Content-Range's, and it must continue exactly where the file stops.
+                // (RFC 9110 section 14.4: "bytes <curSize>-<last>/<fullSize>", last = fullSize - 1, else REFUSED.)
+                val total = if (partial) {
+                    val range = conn.getHeaderField("Content-Range")?.trim()?.let { CONTENT_RANGE.matchEntire(it) }
+                        ?: throw NetError(NetError.Kind.REFUSED, message = "no Content-Range")
+                    val fullSize = range.groupValues[3].toLong()
+                    if (range.groupValues[1].toLong() != curSize || range.groupValues[2].toLong() != fullSize - 1) {
+                        throw NetError(NetError.Kind.REFUSED, message = "Content-Range mismatch")
+                    }
+                    fullSize
+                } else conn.contentLengthLong
                 if (total > MAX_APK) throw NetError(NetError.Kind.REFUSED, message = "too large")
                 conn.inputStream.use { input ->
-                    into.outputStream().use { out ->
+                    java.io.FileOutputStream(into, partial).use { out ->
                         val buffer = ByteArray(64 * 1024)
-                        var read = 0L
+                        var read = if (partial) curSize else 0L
                         var shown = -1
                         while (true) {
                             beforeRead()
@@ -319,15 +341,20 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
     // ignored the range and would send the whole file: refused), a plain read 200 and only 200.
     // [rawEtag] is the one exception to "the tag goes only to the first address": a repo icon's ETag was sent by raw.githubusercontent.com, so
     // it goes back to that host (If-None-Match, RFC 9110 section 13.1.2, https://www.rfc-editor.org/rfc/rfc9110#section-13.1.2) once hop() let it in.
-    private fun open(start: URL, etag: String?, range: String? = null, rawEtag: String? = null): HttpURLConnection? {
+    // [resume]: the download's rule, a 200 or a 206 when a Range was sent (the file may start again), a 200 when none was.
+    private fun open(start: URL, etag: String?, range: String? = null, rawEtag: String? = null, resume: Boolean = false): HttpURLConnection? {
         var url = start
         var hops = 0
         while (true) {
             val sent = if (hops == 0) etag else if (rawEtag != null && url.host.lowercase() == RAW_HOST) rawEtag else null
             val conn = request(url, "GET", sent)
             if (range != null) conn.setRequestProperty("Range", range)
+            // A download that may be resumed asks for the bytes as they are (InstallTask.download: Accept-Encoding identity).
+            if (resume) conn.setRequestProperty("Accept-Encoding", "identity")
             when (val code = conn.responseCode) {
                 200, 206 -> {
+                    // A 206 is taken only when a Range was sent; download() reads which of the two came.
+                    if (resume && (code == 200 || range != null)) return conn
                     if (acceptable(code, range != null)) return conn
                     conn.disconnect()
                     throw NetError(NetError.Kind.REFUSED, message = if (code == 200) "range ignored" else "unasked partial answer")
@@ -607,6 +634,8 @@ class ReleaseNet(cacheDir: File) : ReleaseSource {
                 }
                 if (code == 429) return NetError(NetError.Kind.RATE_LIMITED, null, "rate limited")
             }
+            // A server error is a failure of the network side, tried again like an offline one (Catalog.requestRepoUpdateRetrying).
+            if (code in 500..599) return NetError(NetError.Kind.OFFLINE, message = "http $code")
             return NetError(NetError.Kind.REFUSED, message = "http $code")
         }
 

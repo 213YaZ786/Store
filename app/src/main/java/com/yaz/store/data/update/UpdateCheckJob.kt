@@ -105,7 +105,8 @@ class UpdateCheckJob : JobService(), KoinComponent {
     // GrapheneOS' UpdateCheckJob.onStartJob: the work runs in a coroutine, jobFinished ends it, onStopJob cancels it.
     override fun onStartJob(params: JobParameters): Boolean {
         work = scope.launch {
-            val result = catalog.load()
+            // Forced (a daily check is not throttled), a network failure tried again (Catalog.requestRepoUpdateRetrying).
+            val result = catalog.requestRepoUpdateRetrying(force = true) ?: return@launch jobFinished(params, false)
             val waiting = UpdateNotice.waiting(Installed.statuses(applicationContext, result.entries))
             if (waiting.isNotEmpty()) UpdateNotice.show(applicationContext, waiting)
             // Nothing read at all: tried again later by the scheduler's own back-off.

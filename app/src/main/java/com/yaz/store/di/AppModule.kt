@@ -19,6 +19,7 @@ import com.yaz.store.data.door.DoorProvider
 import com.yaz.store.data.door.Staging
 import com.yaz.store.data.catalog.IconStore
 import com.yaz.store.data.catalog.Openings
+import com.yaz.store.data.catalog.PackageChanges
 import com.yaz.store.data.catalog.RepoDescriptions
 import com.yaz.store.data.catalog.RepoFiles
 import com.yaz.store.data.catalog.Seeded
@@ -43,6 +44,8 @@ import java.io.File
 val appModule = module {
     single { SettingsStore(androidContext()) }
     single { SessionRegistry(PrefsSessionStore(androidContext())) }
+    // The installs and removals seen while the process lives (data/catalog/PackageChanges); StoreApplication registers its receiver.
+    single { PackageChanges(androidContext()) }
     // The catalog of our apps, read from GitHub through the one door of the network (data/net, data/catalog).
     single { ReleaseNet(androidContext().cacheDir) }
     // The date and sizes of a tag are kept in their own folder of the cache, one file per tag.

@@ -14,15 +14,18 @@ import com.yaz.store.data.catalog.Catalog
 import com.yaz.store.data.catalog.CatalogError
 import com.yaz.store.data.catalog.Installed
 import com.yaz.store.data.catalog.Openings
+import com.yaz.store.data.catalog.PackageChanges
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.InstallJob
 import com.yaz.store.data.install.InstallQueue
 import com.yaz.store.data.install.JobStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,7 +51,8 @@ class HomeViewModel(
     private val app: Application,
     private val catalog: Catalog,
     private val queue: InstallQueue,
-    private val openings: Openings
+    private val openings: Openings,
+    private val changes: PackageChanges
 ) : AndroidViewModel(app) {
 
     private val mutable = MutableStateFlow(HomeState())
@@ -68,6 +72,14 @@ class HomeViewModel(
                 val now = jobs.filter { it.step == JobStep.DONE }.map { it.serial }.toSet()
                 if (now.any { it !in done }) refreshInstalled()
                 done = now
+            }
+        }
+        // The list follows installs and removals made elsewhere (PackageChanges, GrapheneOS' PackageStates.init receiver): the phone's side is read
+        // again, never GitHub. An update gives several broadcasts in a row (removed, added, replaced): the last one, a moment later, is the read.
+        viewModelScope.launch {
+            changes.changed.collectLatest {
+                delay(300)
+                refreshInstalled()
             }
         }
     }
@@ -91,20 +103,32 @@ class HomeViewModel(
         }
     }
 
-    /** Reads the account and the phone again; ignored while a load is running. */
-    fun load() {
+    /**
+     * Reads the account and the phone again; ignored while a load is running. [force]: a pull or Retry; the opening (ON_START) does not force, so a
+     * load that ended well less than 5 s ago is not repeated (Catalog.requestRepoUpdate). A network failure is tried again, 5 times in all
+     * (Catalog.requestRepoUpdateRetrying); the cached list shows at the first try's end, the later tries replace it when they read better.
+     */
+    fun load(force: Boolean = true) {
         if (job?.isActive == true) return
         mutable.update { it.copy(loading = true) }
         // Source: Openings (this app's data/catalog/Openings.kt): each opening (ON_START) and each pull is a new generation, so the repos' icons,
         // layers and words are asked again with the ETag (GitHub's conditional request) and the rows load their pictures again.
         openings.begin()
         job = viewModelScope.launch {
-            val result = catalog.load()
-            val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, result.entries) }
-            mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = result.error, listCached = result.listCached) }
+            var shown = emptyList<AppStatus>()
+            val result = catalog.requestRepoUpdateRetrying(force) { each ->
+                val statuses = withContext(Dispatchers.IO) { Installed.statuses(app, each.entries) }
+                shown = statuses
+                mutable.update { it.copy(loading = false, loaded = true, apps = statuses, error = each.error, listCached = each.listCached) }
+            }
+            // Throttled: the list on screen stands.
+            if (result == null) {
+                mutable.update { it.copy(loading = false, loaded = true) }
+                return@launch
+            }
             // The sizes come from GitHub's API only (app.json has none), so only for an app with an update (Store's own included); a tag read once is kept for good.
             val sizes = withContext(Dispatchers.IO) {
-                statuses.filter { it.state == AppState.UPDATE }.map { it.entry }
+                shown.filter { it.state == AppState.UPDATE }.map { it.entry }
                     .mapNotNull { e -> catalog.details(e)?.let { e.detailsKey to it } }.toMap()
             }
             mutable.update { it.copy(details = it.details + sizes) }

@@ -27,7 +27,15 @@ import com.yaz.store.core.common.writeTextAtomically
 import com.yaz.store.data.net.NetError
 import com.yaz.store.data.net.ReleaseNet
 import com.yaz.store.data.net.ReleaseSource
+import com.yaz.store.data.net.RetryPolicy
+import com.yaz.store.data.net.binaryExponentialBackoff
+import com.yaz.store.data.net.retry
+import com.yaz.store.data.net.stopAtAttempts
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -351,6 +359,69 @@ class Catalog(
     // The former load, renamed loadLive; load adds the debug seed to it (kotlinx.coroutines withContext,
     // https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html).
     suspend fun load(): CatalogResult = loadAll().also { if (it.entries.isNotEmpty()) lastKnown = it.entries }
+
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PackageStates.kt#requestRepoUpdate
+    // One load at a time: a caller finding one running awaits it. Unless [force], a load that ended well less than 5 s ago is not repeated (null).
+    // The load runs in its own scope, as GrapheneOS' CoroutineScope(Dispatchers.IO).async does, so a caller that goes away does not cancel it.
+    // Changes: the answer is the CatalogResult (errors are carried, as load does), not a RepoUpdateError; the clock is System.nanoTime, a plain
+    // JVM monotonic clock, for SystemClock.elapsedRealtime; a lock for the main thread's checkMainThread, callers here run on several threads.
+    // not ported: isManuallyRequested (it only tags the error for GrapheneOS' dialog), lastRepoUpdateResult, updateRepo and the listeners
+    // (dispatchRepoUpdateResult, dispatchAllStatesChanged: the screens read the returned result), requestRepoUpdateNoSuspend (no caller).
+    @Volatile private var repoUpdateJob: Deferred<CatalogResult>? = null
+    private var lastSuccessfulRepoUpdateCheck = -1L
+    private val repoUpdateLock = Any()
+    private val repoUpdateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    suspend fun requestRepoUpdate(force: Boolean = false): CatalogResult? {
+        val repoUpdateJob = synchronized(repoUpdateLock) {
+            this.repoUpdateJob ?: run {
+                val timestampMs = System.nanoTime() / 1_000_000
+                if (!force && lastSuccessfulRepoUpdateCheck >= 0 && timestampMs - lastSuccessfulRepoUpdateCheck < 5000) {
+                    null
+                } else {
+                    repoUpdateScope.async(start = CoroutineStart.LAZY) {
+                        val result = try {
+                            load()
+                        } catch (t: Throwable) {
+                            synchronized(repoUpdateLock) { this@Catalog.repoUpdateJob = null }
+                            throw t
+                        }
+                        synchronized(repoUpdateLock) {
+                            this@Catalog.repoUpdateJob = null
+                            if (result.error == null) lastSuccessfulRepoUpdateCheck = System.nanoTime() / 1_000_000
+                        }
+                        result
+                    }.also { this.repoUpdateJob = it }
+                }
+            }
+        } ?: return null
+
+        repoUpdateJob.start()
+        return repoUpdateJob.await()
+    }
+
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/PackageStates.kt#requestRepoUpdateRetrying
+    // The load tried again as GrapheneOS does: RetryPolicy(binaryExponentialBackoff(1_000, 30_000), stopAtAttempts(5)), five tries, 1 s then 2, 4, 8.
+    // Only a network failure (CatalogError.Offline: no network, a timeout, a server error) is tried again; GitHub's limit is not (each try would
+    // cost one of the 60 requests an hour; the cached list serves) and a refusal is not. When the tries are over, the last result is returned,
+    // with the cached list it carries. [onResult] sees each try's result as it comes, so the screen shows the cached list at once.
+    // Changes: kotlin-retry's `retry` (not result.retry, which the Err/Ok type of michaelbull's result library feeds): a failure is thrown as RepoUpdateError.
+    // not ported: isManuallyRequested (see requestRepoUpdate)
+    suspend fun requestRepoUpdateRetrying(force: Boolean = false, onResult: suspend (CatalogResult) -> Unit = {}): CatalogResult? {
+        return try {
+            retry(RetryPolicy(binaryExponentialBackoff(1_000, 30_000), stopAtAttempts(5))) {
+                val result = requestRepoUpdate(force)
+                if (result != null) onResult(result)
+                if (result != null && result.error == CatalogError.Offline) throw RepoUpdateError(result)
+                result
+            }
+        } catch (e: RepoUpdateError) {
+            e.result
+        }
+    }
+
+    /** A load that ended on a network failure, thrown inside [requestRepoUpdateRetrying] so that `retry` tries again. */
+    private class RepoUpdateError(val result: CatalogResult) : Exception("repo update failed")
 
     /**
      * The entries of the last [load] that found any, in memory only (null before the first); the door's "pending" reads them, so a call

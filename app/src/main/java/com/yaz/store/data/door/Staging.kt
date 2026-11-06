@@ -14,6 +14,7 @@ package com.yaz.store.data.door
 import com.yaz.store.core.install.InstallOrigin
 import com.yaz.store.core.install.InstallRequest
 import com.yaz.store.core.install.InstallState
+import com.yaz.store.core.install.UserRestrictionException
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.install.Fetch
 import com.yaz.store.data.install.InstallBackend
@@ -70,6 +71,8 @@ class Staging(
             val file = fileOf(pkg)
             file.parentFile?.mkdirs()
             return try {
+                // GrapheneOS' InstallTask.run: throwIfAppInstallationNotAllowed() before anything is downloaded (a phone that turned installs off: NONE).
+                backend.throwIfAppInstallationNotAllowed()
                 Fetch.checked(backend, entry, file)
                 staged[pkg] = Staged(entry, file)
                 StageResult.STAGED
@@ -105,6 +108,12 @@ class Staging(
                 // Installed meanwhile (from Home, or by the app itself): nothing to do.
                 val installed = installedVersion(pkg)
                 if (installed != null && installed >= item.entry.versionCode) return CommitResult.NONE
+                // Right before the commit, as InstallTask.run: throwIfAppInstallationNotAllowed().
+                try {
+                    backend.throwIfAppInstallationNotAllowed()
+                } catch (e: UserRestrictionException) {
+                    return CommitResult.FAILED
+                }
                 val request = InstallRequest(
                     packageName = pkg,
                     files = listOf(item.file),

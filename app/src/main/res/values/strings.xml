@@ -7,6 +7,7 @@
     <string name="retry">Retry</string>
     <string name="cancel">Cancel</string>
     <string name="cancel_all">Cancel all</string>
+    <string name="install_not_allowed">Installing apps is turned off on this device</string>
     <string name="updates_title">Updates</string>
     <string name="update_all">Update all</string>
     <!-- Parts joined with a comma, as AOSP Dialer's CallLogEntryText.java (https://android.googlesource.com/platform/packages/apps/Dialer/+/refs/heads/main/java/com/android/dialer/calllogutils/CallLogEntryText.java). -->

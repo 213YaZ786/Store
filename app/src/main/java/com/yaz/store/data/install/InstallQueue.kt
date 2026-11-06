@@ -16,23 +16,32 @@ package com.yaz.store.data.install
 //   (https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/).
 // - The order of the steps is the update kit's Updates.stage (Modules shared/update): the sum first, the APK opened only after it
 //   matched, then GrapheneOS' certificate check before the session is committed (see StoreChecks).
-// - A file is deleted after each try, whatever its end (the update kit's stage: `if (!done) file.delete()`, here always, as the session holds its own copy).
+// - A file is deleted after each try, whatever its end (the update kit's stage: `if (!done) file.delete()`, here always, as the session holds its own copy),
+//   except after a network failure: the bytes read are kept and the next try asks for the rest (ReleaseNet.download, GrapheneOS' InstallTask.obtainAndWriteApk
+//   reuses its partly downloaded file the same way, https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/InstallTask.kt).
+//   Only the file of the same tag and APK is resumed, and the sum is checked on the whole file, so a wrong one is deleted and never resumed.
+// - An update whose app vanished meanwhile is cancelled before its session (cancelIfPackageVanished below), and a phone that turned installs off
+//   stops the entry (throwIfAppInstallationNotAllowed), both of GrapheneOS' InstallTask.run.
 import android.content.Intent
 import com.yaz.store.core.apk.ApkInfo
 import com.yaz.store.core.install.InstallFailure
 import com.yaz.store.core.install.InstallOrigin
 import com.yaz.store.core.install.InstallRequest
 import com.yaz.store.core.install.InstallState
+import com.yaz.store.core.install.UserRestrictionException
 import com.yaz.store.data.catalog.AppState
 import com.yaz.store.data.catalog.AppStatus
 import com.yaz.store.data.catalog.StoreEntry
 import com.yaz.store.data.net.NetError
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,6 +98,10 @@ interface InstallBackend {
 
     /** Abandons the session in progress. */
     fun cancelInstall()
+
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/util/PackageManagerUtils.kt#throwIfAppInstallationNotAllowed
+    /** Throws UserRestrictionException, with the words to show, when the phone does not let apps install (core/install/InstallAllowed). Nothing by default. */
+    fun throwIfAppInstallationNotAllowed() = Unit
 }
 
 class InstallQueue(
@@ -197,13 +210,21 @@ class InstallQueue(
         }
     }
 
+    // The partly downloaded files kept after a network failure: package name to "tag/apk" of what the file holds the start of.
+    private val partial = ConcurrentHashMap<String, String>()
+
     private suspend fun process(job: InstallJob) {
         val entry = job.entry
         val name = entry.packageName
         dir.mkdirs()
         val file = File(dir, "$name.apk")
-        // The end of the entry is shown once its file is gone.
+        // A file is resumed only when it is the start of this very tag and APK; any other is deleted (obtainAndWriteApk restarts at 0 on a size that does not fit).
+        val holds = "${entry.tag}/${entry.apkName}"
+        if (partial[name] != holds) file.delete()
+        partial.remove(name)
+        // The end of the entry is shown once its file is gone (or kept, after a network failure).
         var end: (InstallJob) -> InstallJob = { it.copy(step = JobStep.DONE, confirm = null) }
+        var keep = false
         try {
             run(job, file)
         } catch (e: CancellationException) {
@@ -211,13 +232,17 @@ class InstallQueue(
             throw e
         } catch (e: Refused) {
             end = { it.copy(step = JobStep.FAILED, why = e.why, confirm = null) }
+        } catch (e: UserRestrictionException) {
+            end = { it.copy(step = JobStep.FAILED, why = e.message ?: "The installation could not be done.", confirm = null) }
         } catch (e: NetError) {
+            // A lost network or Settings' "Only on Wi-Fi" keeps what was read; every other end deletes it.
+            keep = e.kind == NetError.Kind.OFFLINE || e.kind == NetError.Kind.METERED
             end = { it.copy(step = JobStep.FAILED, why = netWords(e), confirm = null) }
         } catch (e: Exception) {
             // Whatever else goes wrong on this entry (a full disk, a refused service) must not stop the others.
             end = { it.copy(step = JobStep.FAILED, why = "The installation could not be done.", confirm = null) }
         } finally {
-            file.delete()
+            if (keep && file.isFile && file.length() > 0) partial[name] = holds else file.delete()
         }
         change(job.serial, end)
     }
@@ -226,6 +251,9 @@ class InstallQueue(
         val entry = job.entry
         val name = entry.packageName
         val serial = job.serial
+        // InstallTask.run opens with throwIfAppInstallationNotAllowed(); whether this is an update (params.isUpdate) is whether the app is installed now.
+        backend.throwIfAppInstallationNotAllowed()
+        val isUpdate = backend.installedSigners(name) != null
         change(serial) { it.copy(step = JobStep.DOWNLOADING, progress = 0f) }
         // 1 and 2: the sum, the file, the sum of the file, the isolated inspector and the checks (Fetch.checked, shared with the door's staging).
         // Every entry does this at the same time as the others.
@@ -237,8 +265,13 @@ class InstallQueue(
             onChecking = { change(serial) { it.copy(step = JobStep.CHECKING, progress = 1f) } }
         )
         // Checked: it waits for its turn, still shown as CHECKING with the download full. Store's own entry lets every other one end first.
+        cancelIfPackageVanished(job, isUpdate)
         if (name == ownPackage) waitForOthers(serial)
         installLock.withLock {
+            // Right before the commit, as InstallTask.run: cancelIfPackageVanished(), throwIfAppInstallationNotAllowed(), job.ensureActive().
+            cancelIfPackageVanished(job, isUpdate)
+            backend.throwIfAppInstallationNotAllowed()
+            currentCoroutineContext().ensureActive()
             // 3. The kit's session, one at a time: no question, Store as the source, the update ownership claimed on a first install.
             change(serial) { it.copy(step = JobStep.INSTALLING) }
             val request = InstallRequest(
@@ -265,6 +298,19 @@ class InstallQueue(
                 is InstallState.Done -> Unit
                 is InstallState.Failed -> throw Refused(failureWords(result.failure))
                 else -> throw Refused("The installation did not finish.")
+            }
+        }
+    }
+
+    // https://github.com/GrapheneOS/AppStore/blob/main/app/src/main/java/app/grapheneos/apps/core/InstallTask.kt#cancelIfPackageVanished
+    // not ported: the isSharedLibrary test (Store lists no shared library) and the call over every task in multiInstall (one session per entry here).
+    private fun cancelIfPackageVanished(job: InstallJob, isUpdate: Boolean) {
+        val rPackage = job.entry
+        if (isUpdate) {
+            // pkgManager.getPackageInfoOrNull(rPackage.packageName) == null, through the backend (Installed.read)
+            if (backend.installedSigners(rPackage.packageName) == null) {
+                // Package that was supposed to be updated vanished, abort installation: a cancel, not a failure.
+                throw CancellationException()
             }
         }
     }
